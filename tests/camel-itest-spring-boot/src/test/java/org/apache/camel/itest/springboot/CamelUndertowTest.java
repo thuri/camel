@@ -17,7 +17,6 @@
 package org.apache.camel.itest.springboot;
 
 import org.apache.camel.itest.springboot.util.ArquillianPackager;
-import org.apache.camel.itest.springboot.util.DependencyResolver;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.junit.Arquillian;
 import org.jboss.shrinkwrap.api.Archive;
@@ -38,6 +37,7 @@ public class CamelUndertowTest extends AbstractSpringBootTestSupport {
                 .module(inferModuleName(CamelUndertowTest.class))
                 //.dependency(DependencyResolver.withVersion("org.hibernate:hibernate-validator"))
                 .unitTestExclusionPattern(".*(\\.integration\\..*|IntegrationTest$|BaseUndertowTest$|UndertowHttpsSpringTest$)")
+                .dependency("org.hibernate:hibernate-validator")
                 .build();
     }
 

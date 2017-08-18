@@ -22,16 +22,24 @@ import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.ByteBuffer;
+import java.nio.channels.ReadableByteChannel;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
+
+import javax.activation.FileDataSource;
 
 import io.undertow.client.ClientExchange;
 import io.undertow.client.ClientRequest;
 import io.undertow.client.ClientResponse;
 import io.undertow.predicate.Predicate;
 import io.undertow.server.HttpServerExchange;
+import io.undertow.server.handlers.form.FormData;
+import io.undertow.server.handlers.form.FormData.FormValue;
+import io.undertow.server.handlers.form.FormDataParser;
+import io.undertow.util.HeaderMap;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
@@ -39,6 +47,7 @@ import io.undertow.util.Methods;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.TypeConverter;
+import org.apache.camel.impl.DefaultAttachment;
 import org.apache.camel.impl.DefaultMessage;
 import org.apache.camel.spi.HeaderFilterStrategy;
 import org.apache.camel.util.ExchangeHelper;
@@ -47,7 +56,7 @@ import org.apache.camel.util.MessageHelper;
 import org.apache.camel.util.ObjectHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.xnio.ChannelListener;
+import org.xnio.channels.BlockingReadableByteChannel;
 import org.xnio.channels.StreamSourceChannel;
 
 /**
@@ -90,24 +99,43 @@ public class DefaultUndertowHttpBinding implements UndertowHttpBinding {
 
     @Override
     public Message toCamelMessage(HttpServerExchange httpExchange, Exchange exchange) throws Exception {
-        Message result = new DefaultMessage();
+        Message result = new DefaultMessage(exchange.getContext());
 
         populateCamelHeaders(httpExchange, result.getHeaders(), exchange);
 
-        //extract body if the method is allowed to have one
-        //body is extracted as byte[] then auto TypeConverter kicks in
-        if (Methods.POST.equals(httpExchange.getRequestMethod()) || Methods.PUT.equals(httpExchange.getRequestMethod())) {
-            result.setBody(readFromChannel(httpExchange.getRequestChannel()));
+        // Map form data which is parsed by undertow form parsers
+        FormData formData = httpExchange.getAttachment(FormDataParser.FORM_DATA);
+        if (formData != null) {
+            Map<String, Object> body = new HashMap<>();
+            formData.forEach(key -> {
+                formData.get(key).forEach(value -> {
+                    if (value.isFile()) {
+                        DefaultAttachment attachment = new DefaultAttachment(new FilePartDataSource(value));
+                        result.addAttachmentObject(key, attachment);
+                        body.put(key, attachment.getDataHandler());
+                    } else if (headerFilterStrategy != null
+                        && !headerFilterStrategy.applyFilterToExternalHeaders(key, value.getValue(), exchange)) {
+                        UndertowHelper.appendHeader(result.getHeaders(), key, value.getValue());
+                        UndertowHelper.appendHeader(body, key, value.getValue());
+                    }
+                });
+            });
+            result.setBody(body);
         } else {
-            result.setBody(null);
+            //extract body by myself if undertow parser didn't handle and the method is allowed to have one
+            //body is extracted as byte[] then auto TypeConverter kicks in
+            if (Methods.POST.equals(httpExchange.getRequestMethod()) || Methods.PUT.equals(httpExchange.getRequestMethod())) {
+                result.setBody(readFromChannel(httpExchange.getRequestChannel()));
+            } else {
+                result.setBody(null);
+            }
         }
-
         return result;
     }
 
     @Override
     public Message toCamelMessage(ClientExchange clientExchange, Exchange exchange) throws Exception {
-        Message result = new DefaultMessage();
+        Message result = new DefaultMessage(exchange.getContext());
 
         //retrieve response headers
         populateCamelHeaders(clientExchange.getResponse(), result.getHeaders(), exchange);
@@ -255,7 +283,7 @@ public class DefaultUndertowHttpBinding implements UndertowHttpBinding {
 
         int code = message.getHeader(Exchange.HTTP_RESPONSE_CODE, defaultCode, int.class);
 
-        httpExchange.setResponseCode(code);
+        httpExchange.setStatusCode(code);
 
         TypeConverter tc = message.getExchange().getContext().getTypeConverter();
 
@@ -295,7 +323,7 @@ public class DefaultUndertowHttpBinding implements UndertowHttpBinding {
                 // we failed due an exception so print it as plain text
                 StringWriter sw = new StringWriter();
                 PrintWriter pw = new PrintWriter(sw);
-                exception.getCause().printStackTrace(pw);
+                exception.printStackTrace(pw);
 
                 // the body should then be the stacktrace
                 body = ByteBuffer.wrap(sw.toString().getBytes());
@@ -323,11 +351,13 @@ public class DefaultUndertowHttpBinding implements UndertowHttpBinding {
 
         Object body = message.getBody();
 
+        final HeaderMap requestHeaders = clientRequest.getRequestHeaders();
+
         // set the content type in the response.
         String contentType = MessageHelper.getContentType(message);
         if (contentType != null) {
             // set content-type
-            clientRequest.getRequestHeaders().put(Headers.CONTENT_TYPE, contentType);
+            requestHeaders.put(Headers.CONTENT_TYPE, contentType);
             LOG.trace("Content-Type: {}", contentType);
         }
 
@@ -344,7 +374,7 @@ public class DefaultUndertowHttpBinding implements UndertowHttpBinding {
                 if (headerValue != null && headerFilterStrategy != null
                         && !headerFilterStrategy.applyFilterToCamelHeaders(key, headerValue, message.getExchange())) {
                     LOG.trace("HTTP-Header: {}={}", key, headerValue);
-                    clientRequest.getRequestHeaders().add(new HttpString(key), headerValue);
+                    requestHeaders.add(new HttpString(key), headerValue);
                 }
             }
         }
@@ -352,42 +382,44 @@ public class DefaultUndertowHttpBinding implements UndertowHttpBinding {
         return body;
     }
 
-    private byte[] readFromChannel(StreamSourceChannel source) throws IOException {
+    byte[] readFromChannel(StreamSourceChannel source) throws IOException {
         final ByteArrayOutputStream out = new ByteArrayOutputStream();
         final ByteBuffer buffer = ByteBuffer.wrap(new byte[1024]);
 
+        ReadableByteChannel blockingSource = new BlockingReadableByteChannel(source);
+
         for (;;) {
-            int res = source.read(buffer);
+            int res = blockingSource.read(buffer);
             if (res == -1) {
                 return out.toByteArray();
             } else if (res == 0) {
-                source.getReadSetter().set(new ChannelListener<StreamSourceChannel>() {
-                    @Override
-                    public void handleEvent(StreamSourceChannel channel) {
-                        for (;;) {
-                            try {
-                                int res = channel.read(buffer);
-                                if (res == -1 || res == 0) {
-                                    out.toByteArray();
-                                    return;
-                                } else {
-                                    buffer.flip();
-                                    out.write(buffer.array(), buffer.arrayOffset() + buffer.position(), buffer.arrayOffset() + buffer.limit());
-                                    buffer.clear();
-                                }
-                            } catch (IOException e) {
-                                LOG.error("Exception reading from channel {}", e);
-                            }
-                        }
-                    }
-                });
-                source.resumeReads();
-                return out.toByteArray();
+                LOG.error("Channel did not block");
             } else {
                 buffer.flip();
                 out.write(buffer.array(), buffer.arrayOffset() + buffer.position(), buffer.arrayOffset() + buffer.limit());
                 buffer.clear();
             }
+        }
+    }
+
+    class FilePartDataSource extends FileDataSource {
+        private String name;
+        private String contentType;
+
+        FilePartDataSource(FormValue value) {
+            super(value.getPath().toFile());
+            this.name = value.getFileName();
+            this.contentType = value.getHeaders().getFirst(Headers.CONTENT_TYPE);
+        }
+
+        @Override
+        public String getName() {
+            return this.name;
+        }
+
+        @Override
+        public String getContentType() {
+            return this.contentType;
         }
     }
 }

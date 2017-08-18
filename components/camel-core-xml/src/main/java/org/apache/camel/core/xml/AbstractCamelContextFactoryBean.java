@@ -17,6 +17,7 @@
 package org.apache.camel.core.xml;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -41,14 +42,18 @@ import org.apache.camel.builder.ErrorHandlerBuilderRef;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.properties.PropertiesComponent;
 import org.apache.camel.component.properties.PropertiesFunction;
+import org.apache.camel.component.properties.PropertiesLocation;
 import org.apache.camel.component.properties.PropertiesParser;
 import org.apache.camel.component.properties.PropertiesResolver;
+import org.apache.camel.ha.CamelClusterService;
 import org.apache.camel.management.DefaultManagementAgent;
 import org.apache.camel.management.DefaultManagementLifecycleStrategy;
 import org.apache.camel.management.DefaultManagementStrategy;
 import org.apache.camel.management.ManagedManagementStrategy;
 import org.apache.camel.model.ContextScanDefinition;
 import org.apache.camel.model.FromDefinition;
+import org.apache.camel.model.GlobalOptionsDefinition;
+import org.apache.camel.model.HystrixConfigurationDefinition;
 import org.apache.camel.model.IdentifiedType;
 import org.apache.camel.model.InterceptDefinition;
 import org.apache.camel.model.InterceptFromDefinition;
@@ -65,10 +70,13 @@ import org.apache.camel.model.RouteContextRefDefinition;
 import org.apache.camel.model.RouteDefinition;
 import org.apache.camel.model.RouteDefinitionHelper;
 import org.apache.camel.model.ThreadPoolProfileDefinition;
+import org.apache.camel.model.cloud.ServiceCallConfigurationDefinition;
 import org.apache.camel.model.dataformat.DataFormatsDefinition;
 import org.apache.camel.model.rest.RestConfigurationDefinition;
 import org.apache.camel.model.rest.RestContainer;
 import org.apache.camel.model.rest.RestDefinition;
+import org.apache.camel.model.transformer.TransformersDefinition;
+import org.apache.camel.model.validator.ValidatorsDefinition;
 import org.apache.camel.processor.interceptor.BacklogTracer;
 import org.apache.camel.processor.interceptor.HandleFault;
 import org.apache.camel.processor.interceptor.TraceFormatter;
@@ -81,6 +89,7 @@ import org.apache.camel.spi.EventFactory;
 import org.apache.camel.spi.EventNotifier;
 import org.apache.camel.spi.ExecutorServiceManager;
 import org.apache.camel.spi.FactoryFinderResolver;
+import org.apache.camel.spi.HeadersMapFactory;
 import org.apache.camel.spi.InflightRepository;
 import org.apache.camel.spi.InterceptStrategy;
 import org.apache.camel.spi.LifecycleStrategy;
@@ -93,6 +102,7 @@ import org.apache.camel.spi.PackageScanClassResolver;
 import org.apache.camel.spi.PackageScanFilter;
 import org.apache.camel.spi.ProcessorFactory;
 import org.apache.camel.spi.RestConfiguration;
+import org.apache.camel.spi.RouteController;
 import org.apache.camel.spi.RoutePolicyFactory;
 import org.apache.camel.spi.RuntimeEndpointRegistry;
 import org.apache.camel.spi.ShutdownStrategy;
@@ -163,9 +173,16 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
         }
 
         // then set custom properties
+        Map<String, String> mergedOptions = new HashMap<>();
         if (getProperties() != null) {
-            getContext().setProperties(getProperties().asMap());
+            mergedOptions.putAll(getProperties().asMap());
         }
+        if (getGlobalOptions() != null) {
+            mergedOptions.putAll(getGlobalOptions().asMap());
+        }
+
+        getContext().setGlobalOptions(mergedOptions);
+
         // and enable lazy loading of type converters if applicable
         initLazyLoadTypeConverters();
 
@@ -242,6 +259,11 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
             LOG.info("Using custom RuntimeEndpointRegistry: {}", runtimeEndpointRegistry);
             getContext().setRuntimeEndpointRegistry(runtimeEndpointRegistry);
         }
+        HeadersMapFactory headersMapFactory = getBeanForType(HeadersMapFactory.class);
+        if (headersMapFactory != null) {
+            LOG.info("Using custom HeadersMapFactory: {}", headersMapFactory);
+            getContext().setHeadersMapFactory(headersMapFactory);
+        }
         // custom type converters defined as <bean>s
         Map<String, TypeConverters> typeConverters = getContext().getRegistry().findByTypeWithName(TypeConverters.class);
         if (typeConverters != null && !typeConverters.isEmpty()) {
@@ -302,6 +324,12 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
                 }
             }
         }
+        // cluster service
+        CamelClusterService clusterService = getBeanForType(CamelClusterService.class);
+        if (clusterService != null) {
+            LOG.info("Using CamelClusterService: " + clusterService);
+            getContext().addService(clusterService);
+        }
         // add route policy factories
         Map<String, RoutePolicyFactory> routePolicyFactories = getContext().getRegistry().findByTypeWithName(RoutePolicyFactory.class);
         if (routePolicyFactories != null && !routePolicyFactories.isEmpty()) {
@@ -310,6 +338,13 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
                 LOG.info("Using custom RoutePolicyFactory with id: {} and implementation: {}", entry.getKey(), factory);
                 getContext().addRoutePolicyFactory(factory);
             }
+        }
+
+        // Route controller
+        RouteController routeController = getBeanForType(RouteController.class);
+        if (clusterService != null) {
+            LOG.info("Using RouteController: " + routeController);
+            getContext().setRouteController(routeController);
         }
 
         // set the default thread pool profile if defined
@@ -413,6 +448,9 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
     
     @SuppressWarnings("deprecation")
     protected void initLazyLoadTypeConverters() {
+        if (getLoadTypeConverters() != null) {
+            getContext().setLoadTypeConverters(getLoadTypeConverters());
+        }
         if (getLazyLoadTypeConverters() != null) {
             getContext().setLazyLoadTypeConverters(getLazyLoadTypeConverters());
         } else if (System.getProperty(LAZY_LOAD_TYPE_CONVERTERS) != null) {
@@ -567,8 +605,21 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
         if (getCamelPropertyPlaceholder() != null) {
             CamelPropertyPlaceholderDefinition def = getCamelPropertyPlaceholder();
 
+            List<PropertiesLocation> locations = new ArrayList<>();
+
+            if (def.getLocation() != null) {
+                ObjectHelper.createIterable(def.getLocation()).forEach(
+                    location -> locations.add(new PropertiesLocation((String) location))
+                );
+            }
+            if (def.getLocations() != null) {
+                def.getLocations().forEach(
+                    definition -> locations.add(definition.toLocation())
+                );
+            }
+
             PropertiesComponent pc = new PropertiesComponent();
-            pc.setLocation(def.getLocation());
+            pc.setLocations(locations);
             pc.setEncoding(def.getEncoding());
 
             if (def.isCache() != null) {
@@ -598,6 +649,9 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
             
             if (def.isFallbackToUnaugmentedProperty() != null) {
                 pc.setFallbackToUnaugmentedProperty(def.isFallbackToUnaugmentedProperty());
+            }
+            if (def.getDefaultFallbackEnabled() != null) {
+                pc.setDefaultFallbackEnabled(def.getDefaultFallbackEnabled());
             }
             
             pc.setPrefixToken(def.getPrefixToken());
@@ -677,7 +731,10 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
 
     public abstract List<InterceptSendToEndpointDefinition> getInterceptSendToEndpoints();
 
+    @Deprecated
     public abstract PropertiesDefinition getProperties();
+
+    public abstract GlobalOptionsDefinition getGlobalOptions();
 
     public abstract String[] getPackages();
 
@@ -695,6 +752,8 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
 
     public abstract String getMessageHistory();
 
+    public abstract String getLogMask();
+
     public abstract String getLogExhaustedMessageBody();
 
     public abstract String getStreamCache();
@@ -706,6 +765,8 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
     public abstract String getAutoStartup();
 
     public abstract String getUseMDCLogging();
+
+    public abstract String getUseDataType();
 
     public abstract String getUseBreadcrumb();
 
@@ -722,6 +783,8 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
      */
     @Deprecated
     public abstract Boolean getLazyLoadTypeConverters();
+
+    public abstract Boolean getLoadTypeConverters();
 
     public abstract Boolean getTypeConverterStatisticsEnabled();
 
@@ -743,6 +806,10 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
 
     public abstract DataFormatsDefinition getDataFormats();
 
+    public abstract TransformersDefinition getTransformers();
+
+    public abstract ValidatorsDefinition getValidators();
+
     public abstract List<OnExceptionDefinition> getOnExceptions();
 
     public abstract List<OnCompletionDefinition> getOnCompletions();
@@ -755,6 +822,18 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
 
     public abstract String getDependsOn();
 
+    public abstract List<AbstractCamelFactoryBean<?>> getBeansFactory();
+
+    public abstract List<?> getBeans();
+
+    public abstract ServiceCallConfigurationDefinition getDefaultServiceCallConfiguration();
+
+    public abstract List<ServiceCallConfigurationDefinition> getServiceCallConfigurations();
+
+    public abstract HystrixConfigurationDefinition getDefaultHystrixConfiguration();
+
+    public abstract List<HystrixConfigurationDefinition> getHystrixConfigurations();
+
     // Implementation methods
     // -------------------------------------------------------------------------
 
@@ -765,47 +844,55 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
      * @throws Exception is thrown if error occurred
      */
     protected void initCamelContext(T ctx) throws Exception {
+        final T context = getContext();
+
         if (getStreamCache() != null) {
-            ctx.setStreamCaching(CamelContextHelper.parseBoolean(getContext(), getStreamCache()));
+            ctx.setStreamCaching(CamelContextHelper.parseBoolean(context, getStreamCache()));
         }
         if (getTrace() != null) {
-            ctx.setTracing(CamelContextHelper.parseBoolean(getContext(), getTrace()));
+            ctx.setTracing(CamelContextHelper.parseBoolean(context, getTrace()));
         }
         if (getMessageHistory() != null) {
-            ctx.setMessageHistory(CamelContextHelper.parseBoolean(getContext(), getMessageHistory()));
+            ctx.setMessageHistory(CamelContextHelper.parseBoolean(context, getMessageHistory()));
+        }
+        if (getLogMask() != null) {
+            ctx.setLogMask(CamelContextHelper.parseBoolean(context, getLogMask()));
         }
         if (getLogExhaustedMessageBody() != null) {
-            ctx.setLogExhaustedMessageBody(CamelContextHelper.parseBoolean(getContext(), getLogExhaustedMessageBody()));
+            ctx.setLogExhaustedMessageBody(CamelContextHelper.parseBoolean(context, getLogExhaustedMessageBody()));
         }
         if (getDelayer() != null) {
-            ctx.setDelayer(CamelContextHelper.parseLong(getContext(), getDelayer()));
+            ctx.setDelayer(CamelContextHelper.parseLong(context, getDelayer()));
         }
         if (getHandleFault() != null) {
-            ctx.setHandleFault(CamelContextHelper.parseBoolean(getContext(), getHandleFault()));
+            ctx.setHandleFault(CamelContextHelper.parseBoolean(context, getHandleFault()));
         }
         if (getErrorHandlerRef() != null) {
             ctx.setErrorHandlerBuilder(new ErrorHandlerBuilderRef(getErrorHandlerRef()));
         }
         if (getAutoStartup() != null) {
-            ctx.setAutoStartup(CamelContextHelper.parseBoolean(getContext(), getAutoStartup()));
+            ctx.setAutoStartup(CamelContextHelper.parseBoolean(context, getAutoStartup()));
         }
         if (getUseMDCLogging() != null) {
-            ctx.setUseMDCLogging(CamelContextHelper.parseBoolean(getContext(), getUseMDCLogging()));
+            ctx.setUseMDCLogging(CamelContextHelper.parseBoolean(context, getUseMDCLogging()));
+        }
+        if (getUseDataType() != null) {
+            ctx.setUseDataType(CamelContextHelper.parseBoolean(context, getUseDataType()));
         }
         if (getUseBreadcrumb() != null) {
-            ctx.setUseBreadcrumb(CamelContextHelper.parseBoolean(getContext(), getUseBreadcrumb()));
+            ctx.setUseBreadcrumb(CamelContextHelper.parseBoolean(context, getUseBreadcrumb()));
         }
         if (getAllowUseOriginalMessage() != null) {
-            ctx.setAllowUseOriginalMessage(CamelContextHelper.parseBoolean(getContext(), getAllowUseOriginalMessage()));
+            ctx.setAllowUseOriginalMessage(CamelContextHelper.parseBoolean(context, getAllowUseOriginalMessage()));
         }
         if (getRuntimeEndpointRegistryEnabled() != null) {
-            ctx.getRuntimeEndpointRegistry().setEnabled(CamelContextHelper.parseBoolean(getContext(), getRuntimeEndpointRegistryEnabled()));
+            ctx.getRuntimeEndpointRegistry().setEnabled(CamelContextHelper.parseBoolean(context, getRuntimeEndpointRegistryEnabled()));
         }
         if (getManagementNamePattern() != null) {
-            ctx.getManagementNameStrategy().setNamePattern(getManagementNamePattern());
+            ctx.getManagementNameStrategy().setNamePattern(CamelContextHelper.parseText(context, getManagementNamePattern()));
         }
         if (getThreadNamePattern() != null) {
-            ctx.getExecutorServiceManager().setThreadNamePattern(getThreadNamePattern());
+            ctx.getExecutorServiceManager().setThreadNamePattern(CamelContextHelper.parseText(context, getThreadNamePattern()));
         }
         if (getShutdownRoute() != null) {
             ctx.setShutdownRoute(getShutdownRoute());
@@ -815,6 +902,12 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
         }
         if (getDataFormats() != null) {
             ctx.setDataFormats(getDataFormats().asMap());
+        }
+        if (getTransformers() != null) {
+            ctx.setTransformers(getTransformers().getTransformers());
+        }
+        if (getValidators() != null) {
+            ctx.setValidators(getValidators().getValidators());
         }
         if (getTypeConverterStatisticsEnabled() != null) {
             ctx.setTypeConverterStatisticsEnabled(getTypeConverterStatisticsEnabled());
@@ -827,6 +920,22 @@ public abstract class AbstractCamelContextFactoryBean<T extends ModelCamelContex
         }
         if (getRestConfiguration() != null) {
             ctx.setRestConfiguration(getRestConfiguration().asRestConfiguration(ctx));
+        }
+        if (getDefaultServiceCallConfiguration() != null) {
+            ctx.setServiceCallConfiguration(getDefaultServiceCallConfiguration());
+        }
+        if (getServiceCallConfigurations() != null) {
+            for (ServiceCallConfigurationDefinition bean : getServiceCallConfigurations()) {
+                ctx.addServiceCallConfiguration(bean.getId(), bean);
+            }
+        }
+        if (getDefaultHystrixConfiguration() != null) {
+            ctx.setHystrixConfiguration(getDefaultHystrixConfiguration());
+        }
+        if (getHystrixConfigurations() != null) {
+            for (HystrixConfigurationDefinition bean : getHystrixConfigurations()) {
+                ctx.addHystrixConfiguration(bean.getId(), bean);
+            }
         }
     }
 

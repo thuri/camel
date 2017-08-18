@@ -106,6 +106,7 @@ public class JaxbDataFormat extends ServiceSupport implements DataFormat, DataFo
     private TypeConverter typeConverter;
     private Schema cachedSchema;
     private Map<String, Object> jaxbProviderProperties;
+    private boolean contentTypeHeader = true;
 
     public JaxbDataFormat() {
     }
@@ -166,6 +167,13 @@ public class JaxbDataFormat extends ServiceSupport implements DataFormat, DataFo
             }
             marshal(exchange, graph, stream, marshaller);
 
+            if (contentTypeHeader) {
+                if (exchange.hasOut()) {
+                    exchange.getOut().setHeader(Exchange.CONTENT_TYPE, "application/xml");
+                } else {
+                    exchange.getIn().setHeader(Exchange.CONTENT_TYPE, "application/xml");
+                }
+            }
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -175,8 +183,22 @@ public class JaxbDataFormat extends ServiceSupport implements DataFormat, DataFo
         throws XMLStreamException, JAXBException, NoTypeConversionAvailableException, IOException, InvalidPayloadException {
 
         Object element = graph;
-        if (partialClass != null && getPartNamespace() != null) {
-            element = new JAXBElement<Object>(getPartNamespace(), partialClass, graph);
+        QName partNamespaceOnDataFormat = getPartNamespace();
+        String partClassFromHeader = exchange.getIn().getHeader(JaxbConstants.JAXB_PART_CLASS, String.class);
+        String partNamespaceFromHeader = exchange.getIn().getHeader(JaxbConstants.JAXB_PART_NAMESPACE, String.class);
+        if ((partialClass != null || partClassFromHeader != null)
+                && (partNamespaceOnDataFormat != null || partNamespaceFromHeader != null)) {
+            if (partClassFromHeader != null) {
+                try {
+                    partialClass = camelContext.getClassResolver().resolveMandatoryClass(partClassFromHeader, Object.class);
+                } catch (ClassNotFoundException e) {
+                    throw new JAXBException(e);
+                }
+            }
+            if (partNamespaceFromHeader != null) {
+                partNamespaceOnDataFormat = QName.valueOf(partNamespaceFromHeader);
+            }
+            element = new JAXBElement<Object>(partNamespaceOnDataFormat, partialClass, graph);
         }
 
         // only marshal if its possible
@@ -248,8 +270,16 @@ public class JaxbDataFormat extends ServiceSupport implements DataFormat, DataFo
             } else {
                 xmlReader = typeConverter.convertTo(XMLStreamReader.class, stream);
             }
-            if (partialClass != null) {
+            String partClassFromHeader = (String)exchange.getIn().getHeader(JaxbConstants.JAXB_PART_CLASS);
+            if (partialClass != null || partClassFromHeader != null) {
                 // partial unmarshalling
+                if (partClassFromHeader != null) {
+                    try {
+                        partialClass = camelContext.getClassResolver().resolveMandatoryClass(partClassFromHeader, Object.class);
+                    } catch (ClassNotFoundException e) {
+                        throw new JAXBException(e);
+                    }
+                }
                 answer = createUnmarshaller().unmarshal(xmlReader, partialClass);
             } else {
                 answer = createUnmarshaller().unmarshal(xmlReader);
@@ -436,6 +466,18 @@ public class JaxbDataFormat extends ServiceSupport implements DataFormat, DataFo
 
     public void setJaxbProviderProperties(Map<String, Object> jaxbProviderProperties) {
         this.jaxbProviderProperties = jaxbProviderProperties;
+    }
+
+
+    public boolean isContentTypeHeader() {
+        return contentTypeHeader;
+    }
+
+    /**
+     * If enabled then JAXB will set the Content-Type header to <tt>application/xml</tt> when marshalling.
+     */
+    public void setContentTypeHeader(boolean contentTypeHeader) {
+        this.contentTypeHeader = contentTypeHeader;
     }
 
     @Override

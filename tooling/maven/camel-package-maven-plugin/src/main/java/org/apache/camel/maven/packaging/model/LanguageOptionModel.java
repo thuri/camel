@@ -19,10 +19,12 @@ package org.apache.camel.maven.packaging.model;
 public class LanguageOptionModel {
 
     private String name;
+    private String displayName;
     private String kind;
     private String type;
     private String javaType;
     private String deprecated;
+    private String deprecationNote;
     private String description;
     private String defaultValue;
     private String enumValues;
@@ -33,6 +35,14 @@ public class LanguageOptionModel {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
     public String getKind() {
@@ -65,6 +75,14 @@ public class LanguageOptionModel {
 
     public void setDeprecated(String deprecated) {
         this.deprecated = deprecated;
+    }
+
+    public String getDeprecationNote() {
+        return deprecationNote;
+    }
+
+    public void setDeprecationNote(String deprecationNote) {
+        this.deprecationNote = deprecationNote;
     }
 
     public String getDescription() {

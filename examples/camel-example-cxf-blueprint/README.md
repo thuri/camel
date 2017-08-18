@@ -18,9 +18,9 @@ You will need to compile this example first:
 
 ### Run
 
-To run the example on Apache Karaf 3.x or newer
+To run the example on Apache Karaf 4.x or newer
 
-#### Step 1: Laraf
+#### Step 1: Karaf
 
 Launch the server
 
@@ -75,9 +75,6 @@ Open the request 1 (under camel-example-cxf-blueprint --> ReportIncidentBinding 
 
 #### Step 6: Check the file system
    Check the folder "target/inbox/" in the Karaf base directory to see that a message has arrived.
-
-### Documentation
-This example is described in more detail at [http://camel.apache.org/cxf-example-osgi-blueprint.html](http://camel.apache.org/cxf-example-osgi-blueprint.html)
 
 ### Forum, Help, etc
 

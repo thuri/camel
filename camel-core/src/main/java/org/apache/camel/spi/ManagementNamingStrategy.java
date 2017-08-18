@@ -38,9 +38,13 @@ import org.apache.camel.Service;
  */
 public interface ManagementNamingStrategy {
 
+    // TODO: Should be renamed to ManagementObjectNameStrategy
+
     ObjectName getObjectNameForCamelContext(String managementName, String name) throws MalformedObjectNameException;
 
     ObjectName getObjectNameForCamelContext(CamelContext context) throws MalformedObjectNameException;
+
+    ObjectName getObjectNameForRouteController(CamelContext context) throws MalformedObjectNameException;
 
     ObjectName getObjectNameForComponent(Component component, String name) throws MalformedObjectNameException;
 

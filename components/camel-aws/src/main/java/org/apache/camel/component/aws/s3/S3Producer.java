@@ -34,7 +34,6 @@ import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
 import com.amazonaws.services.s3.model.CompleteMultipartUploadResult;
 import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.CopyObjectResult;
-import com.amazonaws.services.s3.model.CreateBucketRequest;
 import com.amazonaws.services.s3.model.DeleteBucketRequest;
 import com.amazonaws.services.s3.model.InitiateMultipartUploadRequest;
 import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
@@ -48,7 +47,6 @@ import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.WrappedFile;
-import org.apache.camel.component.aws.ec2.EC2Constants;
 import org.apache.camel.impl.DefaultProducer;
 import org.apache.camel.util.CastUtils;
 import org.apache.camel.util.FileUtil;
@@ -314,7 +312,7 @@ public class S3Producer extends DefaultProducer {
     }
     
     private S3Operations determineOperation(Exchange exchange) {
-        S3Operations operation = exchange.getIn().getHeader(EC2Constants.OPERATION, S3Operations.class);
+        S3Operations operation = exchange.getIn().getHeader(S3Constants.S3_OPERATION, S3Operations.class);
         if (operation == null) {
             operation = getConfiguration().getOperation();
         }

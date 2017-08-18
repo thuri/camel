@@ -33,7 +33,7 @@ import org.apache.camel.util.ExpressionToPredicateAdapter;
  *
  * @see TokenizeLanguage
  */
-@Metadata(label = "language,core", title = "Tokenize")
+@Metadata(firstVersion = "2.0.0", label = "language,core", title = "Tokenize")
 @XmlRootElement(name = "tokenize")
 @XmlAccessorType(XmlAccessType.FIELD)
 public class TokenizerExpression extends ExpressionDefinition {
@@ -52,7 +52,7 @@ public class TokenizerExpression extends ExpressionDefinition {
     @XmlAttribute
     private Boolean includeTokens;
     @XmlAttribute
-    private Integer group;
+    private String group;
     @XmlAttribute
     private Boolean skipFirst;
 
@@ -149,14 +149,15 @@ public class TokenizerExpression extends ExpressionDefinition {
         this.includeTokens = includeTokens;
     }
 
-    public Integer getGroup() {
+    public String getGroup() {
         return group;
     }
 
     /**
      * To group N parts together, for example to split big files into chunks of 1000 lines.
+     * You can use simple language as the group to support dynamic group sizes.
      */
-    public void setGroup(Integer group) {
+    public void setGroup(String group) {
         this.group = group;
     }
 
@@ -192,10 +193,7 @@ public class TokenizerExpression extends ExpressionDefinition {
         if (includeTokens != null) {
             language.setIncludeTokens(includeTokens);
         }
-        if (group != null) {
-            if (group <= 0) {
-                throw new IllegalArgumentException("Group must be a positive number, was: " + group);
-            }
+        if (group != null && !"0".equals(group)) {
             language.setGroup(group);
         }
         if (skipFirst != null) {

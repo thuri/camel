@@ -30,7 +30,6 @@ import io.netty.handler.codec.base64.Base64;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
@@ -105,7 +104,7 @@ public class HttpServerChannelHandler extends ServerChannelHandler {
             }
             HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
             response.headers().set("Allow", s);
-            response.headers().set(Exchange.CONTENT_TYPE, "text/plain");
+            // do not include content-type as that would indicate to the caller that we can only do text/plain
             response.headers().set(Exchange.CONTENT_LENGTH, 0);
             ctx.writeAndFlush(response);
             return;

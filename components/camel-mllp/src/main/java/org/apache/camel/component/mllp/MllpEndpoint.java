@@ -21,6 +21,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
+import org.apache.camel.api.management.ManagedResource;
 import org.apache.camel.impl.DefaultEndpoint;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
@@ -30,14 +31,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Represents a MLLP endpoint.
+ * Provides functionality required by Healthcare providers to communicate with other systems using the MLLP protocol.
  * <p/>
- * NOTE: MLLP payloads are not logged unless the logging level is set to DEBUG or TRACE to avoid introducing PHI
- * into the log files.  Logging of PHI can be globally disabled by setting the org.apache.camel.mllp.logPHI system
+ * MLLP payloads are not logged unless the logging level is set to DEBUG or TRACE to avoid introducing PHI
+ * into the log files. Logging of PHI can be globally disabled by setting the org.apache.camel.mllp.logPHI system
  * property to false.
- * <p/>
  */
-@UriEndpoint(scheme = "mllp", title = "MLLP", syntax = "mllp:hostname:port", consumerClass = MllpTcpServerConsumer.class, label = "mllp")
+@ManagedResource(description = "Mllp Endpoint")
+@UriEndpoint(firstVersion = "2.17.0", scheme = "mllp", title = "MLLP", syntax = "mllp:hostname:port", consumerClass = MllpTcpServerConsumer.class, label = "hl7")
 public class MllpEndpoint extends DefaultEndpoint {
     public static final char START_OF_BLOCK = 0x0b;      // VT (vertical tab)        - decimal 11, octal 013
     public static final char END_OF_BLOCK = 0x1c;        // FS (file separator)      - decimal 28, octal 034
@@ -98,6 +99,12 @@ public class MllpEndpoint extends DefaultEndpoint {
 
     @UriParam(defaultValue = "true")
     boolean hl7Headers = true;
+
+    @UriParam(defaultValue = "true")
+    boolean bufferWrites = true;
+
+    @UriParam(defaultValue = "false")
+    boolean validatePayload;
 
     @UriParam(label = "codec")
     String charsetName;
@@ -389,5 +396,39 @@ public class MllpEndpoint extends DefaultEndpoint {
      */
     public void setHl7Headers(boolean hl7Headers) {
         this.hl7Headers = hl7Headers;
+    }
+
+    public boolean isValidatePayload() {
+        return validatePayload;
+    }
+
+    /**
+     * Enable/Disable the validation of HL7 Payloads
+     *
+     * If enabled, HL7 Payloads received from external systems will be validated (see Hl7Util.generateInvalidPayloadExceptionMessage for details on the validation).
+     * If and invalid payload is detected, a MllpInvalidMessageException (for consumers) or a MllpInvalidAcknowledgementException will be thrown.
+     *
+     * @param validatePayload enabled if true, otherwise disabled
+     */
+    public void setValidatePayload(boolean validatePayload) {
+        this.validatePayload = validatePayload;
+    }
+
+    public boolean isBufferWrites() {
+        return bufferWrites;
+    }
+
+    /**
+     * Enable/Disable the validation of HL7 Payloads
+     *
+     * If enabled, MLLP Payloads are buffered and written to the external system in a single write(byte[]) operation.
+     * If disabled, the MLLP payload will not be buffered, and three write operations will be used.  The first operation
+     * will write the MLLP start-of-block character {0x0b (ASCII VT)}, the second operation will write the HL7 payload, and the
+     * third operation will writh the MLLP end-of-block character and the MLLP end-of-data character {[0x1c, 0x0d] (ASCII [FS, CR])}.
+     *
+     * @param bufferWrites enabled if true, otherwise disabled
+     */
+    public void setBufferWrites(boolean bufferWrites) {
+        this.bufferWrites = bufferWrites;
     }
 }

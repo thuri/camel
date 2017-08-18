@@ -38,7 +38,7 @@ import org.apache.camel.util.ObjectHelper;
 /**
  * The file component is used for reading or writing files.
  */
-@UriEndpoint(scheme = "file", title = "File", syntax = "file:directoryName", consumerClass = FileConsumer.class, label = "core,file")
+@UriEndpoint(firstVersion = "1.0.0", scheme = "file", title = "File", syntax = "file:directoryName", consumerClass = FileConsumer.class, label = "core,file")
 public class FileEndpoint extends GenericFileEndpoint<File> {
 
     private static final Integer CHMOD_WRITE_MASK = 02;
@@ -140,7 +140,7 @@ public class FileEndpoint extends GenericFileEndpoint<File> {
     public Exchange createExchange(GenericFile<File> file) {
         Exchange exchange = createExchange();
         if (file != null) {
-            file.bindToExchange(exchange);
+            file.bindToExchange(exchange, probeContentType);
         }
         return exchange;
     }
@@ -238,7 +238,6 @@ public class FileEndpoint extends GenericFileEndpoint<File> {
     public void setProbeContentType(boolean probeContentType) {
         this.probeContentType = probeContentType;
     }
-
 
     public String getExtendedAttributes() {
         return extendedAttributes;

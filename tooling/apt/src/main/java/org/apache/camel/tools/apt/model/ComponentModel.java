@@ -25,13 +25,16 @@ public final class ComponentModel {
     private String javaType;
     private String title;
     private String description;
+    private String firstVersion;
     private String groupId;
     private String artifactId;
     private String versionId;
     private String label;
+    private String verifiers;
     private boolean consumerOnly;
     private boolean producerOnly;
     private boolean deprecated;
+    private String deprecationNode;
     private boolean lenientProperties;
     private boolean async;
 
@@ -91,6 +94,14 @@ public final class ComponentModel {
         this.description = description;
     }
 
+    public String getFirstVersion() {
+        return firstVersion;
+    }
+
+    public void setFirstVersion(String firstVersion) {
+        this.firstVersion = firstVersion;
+    }
+
     public String getGroupId() {
         return groupId;
     }
@@ -123,6 +134,14 @@ public final class ComponentModel {
         this.label = label;
     }
 
+    public String getVerifiers() {
+        return verifiers;
+    }
+
+    public void setVerifiers(String verifiers) {
+        this.verifiers = verifiers;
+    }
+
     public boolean isConsumerOnly() {
         return consumerOnly;
     }
@@ -145,6 +164,14 @@ public final class ComponentModel {
 
     public void setDeprecated(boolean deprecated) {
         this.deprecated = deprecated;
+    }
+
+    public String getDeprecationNode() {
+        return deprecationNode;
+    }
+
+    public void setDeprecationNode(String deprecationNode) {
+        this.deprecationNode = deprecationNode;
     }
 
     public boolean isLenientProperties() {

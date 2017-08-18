@@ -19,12 +19,14 @@ package org.apache.camel.util;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.TestSupport;
+import org.apache.camel.converter.IOConverter;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.impl.SimpleRegistry;
 
@@ -42,7 +44,7 @@ public class ResourceHelperTest extends TestSupport {
 
         String text = context.getTypeConverter().convertTo(String.class, is);
         assertNotNull(text);
-        assertTrue(text.contains("log4j"));
+        assertTrue(text.contains("rootLogger"));
         is.close();
 
         context.stop();
@@ -60,7 +62,7 @@ public class ResourceHelperTest extends TestSupport {
 
         String text = context.getTypeConverter().convertTo(String.class, is);
         assertNotNull(text);
-        assertTrue(text.contains("log4j"));
+        assertTrue(text.contains("rootLogger"));
         is.close();
 
         context.stop();
@@ -75,7 +77,7 @@ public class ResourceHelperTest extends TestSupport {
 
         String text = context.getTypeConverter().convertTo(String.class, is);
         assertNotNull(text);
-        assertTrue(text.contains("log4j"));
+        assertTrue(text.contains("rootLogger"));
         is.close();
 
         context.stop();
@@ -83,7 +85,7 @@ public class ResourceHelperTest extends TestSupport {
 
     public void testLoadRegistry() throws Exception {
         SimpleRegistry registry = new SimpleRegistry();
-        registry.put("myBean", "This is a log4j logging configuation file");
+        registry.put("myBean", "This is a log4j logging configuration file");
 
         CamelContext context = new DefaultCamelContext(registry);
         context.start();
@@ -98,6 +100,7 @@ public class ResourceHelperTest extends TestSupport {
 
         context.stop();
     }
+
     public void testLoadClasspathDefault() throws Exception {
         CamelContext context = new DefaultCamelContext();
         context.start();
@@ -107,7 +110,7 @@ public class ResourceHelperTest extends TestSupport {
 
         String text = context.getTypeConverter().convertTo(String.class, is);
         assertNotNull(text);
-        assertTrue(text.contains("log4j"));
+        assertTrue(text.contains("rootLogger"));
         is.close();
 
         context.stop();
@@ -150,7 +153,7 @@ public class ResourceHelperTest extends TestSupport {
 
         String text = context.getTypeConverter().convertTo(String.class, url);
         assertNotNull(text);
-        assertTrue(text.contains("log4j"));
+        assertTrue(text.contains("rootLogger"));
 
         context.stop();
     }
@@ -164,7 +167,69 @@ public class ResourceHelperTest extends TestSupport {
 
         String text = context.getTypeConverter().convertTo(String.class, url);
         assertNotNull(text);
-        assertTrue(text.contains("log4j"));
+        assertTrue(text.contains("rootLogger"));
+
+        context.stop();
+    }
+
+    public void testLoadCustomUrlasInputStream() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        context.start();
+
+        String handlerPackageSystemProp = "java.protocol.handler.pkgs";
+        String customUrlHandlerPackage = "org.apache.camel.urlhandler";
+
+        registerSystemProperty(handlerPackageSystemProp, customUrlHandlerPackage, "|");
+
+        InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(context, "custom://hello");
+        assertNotNull(is);
+
+        assertEquals("hello", IOConverter.toString(IOHelper.buffered(new InputStreamReader(is, "UTF-8"))));
+
+        context.stop();
+    }
+
+    public void testLoadCustomUrlasInputStreamFail() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        context.start();
+
+        try {
+            InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(context, "custom://hello");
+            assertNotNull(is);
+        } catch (Exception e) {
+            assertEquals("unknown protocol: custom", e.getMessage());
+        }
+
+        context.stop();
+    }
+
+    public void testLoadCustomUrl() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        context.start();
+
+        String handlerPackageSystemProp = "java.protocol.handler.pkgs";
+        String customUrlHandlerPackage = "org.apache.camel.urlhandler";
+        registerSystemProperty(handlerPackageSystemProp, customUrlHandlerPackage, "|");
+
+        URL url = ResourceHelper.resolveResourceAsUrl(context.getClassResolver(), "custom://hello");
+        assertNotNull(url);
+
+        String text = context.getTypeConverter().convertTo(String.class, url);
+        assertNotNull(text);
+        assertTrue(text.contains("hello"));
+
+        context.stop();
+    }
+
+    public void testLoadCustomUrlFail() throws Exception {
+        CamelContext context = new DefaultCamelContext();
+        context.start();
+
+        try {
+            URL url = ResourceHelper.resolveResourceAsUrl(context.getClassResolver(), "custom://hello");
+        } catch (Exception e) {
+            assertEquals("unknown protocol: custom", e.getMessage());
+        }
 
         context.stop();
     }

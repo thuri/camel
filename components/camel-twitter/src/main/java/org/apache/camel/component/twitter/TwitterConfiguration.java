@@ -21,6 +21,7 @@ import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriParams;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.util.ObjectHelper;
 import twitter4j.Twitter;
 import twitter4j.TwitterFactory;
 import twitter4j.TwitterStream;
@@ -31,23 +32,16 @@ import twitter4j.conf.ConfigurationBuilder;
 @UriParams
 public class TwitterConfiguration {
 
-    @UriPath(description = "The kind of endpoint", enums = "directmessage,search,streaming/filter,streaming/sample,streaming/user"
-            + ",timeline/home,timeline/mentions,timeline/retweetsofme,timeline/user") @Metadata(required = "true")
-    private String kind;
-    @UriParam(label = "consumer", defaultValue = "direct", enums = "polling,direct,event")
-    private EndpointType type = EndpointType.DIRECT;
-    @UriParam
+    @UriParam(label = "consumer", defaultValue = "polling", enums = "polling,direct,event")
+    private EndpointType type = EndpointType.POLLING;
+    @UriParam(label = "security", secret = true)
     private String accessToken;
-    @UriParam
+    @UriParam(label = "security", secret = true)
     private String accessTokenSecret;
-    @UriParam
+    @UriParam(label = "security", secret = true)
     private String consumerKey;
-    @UriParam
+    @UriParam(label = "security", secret = true)
     private String consumerSecret;
-    @UriParam
-    private String user;
-    @UriParam(label = "consumer,filter")
-    private String keywords;
     @UriParam(label = "consumer,filter")
     private String userIds;
     @UriParam(label = "consumer,filter", defaultValue = "true")
@@ -60,6 +54,8 @@ public class TwitterConfiguration {
     private Integer count;
     @UriParam(label = "consumer,filter", defaultValue = "1")
     private Integer numberOfPages = 1;
+    @UriParam(label = "consumer,sort", defaultValue = "true")
+    private boolean sortById = true;
     @UriParam(label = "proxy")
     private String httpProxyHost;
     @UriParam(label = "proxy")
@@ -96,7 +92,7 @@ public class TwitterConfiguration {
      */
     public void checkComplete() {
         if (twitter == null && twitterStream == null
-                && (consumerKey.isEmpty() || consumerSecret.isEmpty() || accessToken.isEmpty() || accessTokenSecret.isEmpty())) {
+                && (ObjectHelper.isEmpty(consumerKey) || ObjectHelper.isEmpty(consumerSecret) || ObjectHelper.isEmpty(accessToken) ||  ObjectHelper.isEmpty(accessTokenSecret))) {
             throw new IllegalArgumentException("twitter or twitterStream or all of consumerKey, consumerSecret, accessToken, and accessTokenSecret must be set!");
         }
     }
@@ -158,18 +154,6 @@ public class TwitterConfiguration {
         return twitterStream;
     }
 
-    public String getKind() {
-        return kind;
-    }
-
-    /**
-     * What polling mode to use, direct, polling or event based.
-     * The event mode is only supported when the endpoint kind is event based.
-     */
-    public void setKind(String kind) {
-        this.kind = kind;
-    }
-
     public String getConsumerKey() {
         return consumerKey;
     }
@@ -214,28 +198,6 @@ public class TwitterConfiguration {
         this.accessTokenSecret = accessTokenSecret;
     }
     
-    public String getUser() {
-        return user;
-    }
-
-    /**
-     * Username, used for user timeline consumption, direct message production, etc.
-     */
-    public void setUser(String user) {
-        this.user = user;
-    }
-
-    public String getKeywords() {
-        return keywords;
-    }
-
-    /**
-     * Can be used for search and streaming/filter. Multiple values can be separated with comma.
-     */
-    public void setKeywords(String keywords) {
-        this.keywords = keywords;
-    }
-
     public EndpointType getType() {
         return type;
     }
@@ -323,6 +285,17 @@ public class TwitterConfiguration {
      */
     public void setNumberOfPages(Integer numberOfPages) {
         this.numberOfPages = numberOfPages;
+    }
+
+    public boolean isSortById() {
+        return sortById;
+    }
+
+    /**
+     * Sorts by id, so the oldest are first, and newest last.
+     */
+    public void setSortById(boolean sortById) {
+        this.sortById = sortById;
     }
 
     /**

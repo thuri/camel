@@ -26,14 +26,22 @@ import io.netty.util.concurrent.EventExecutorGroup;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
+import org.apache.camel.SSLContextParametersAware;
 import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.util.IntrospectionSupport;
 import org.apache.camel.util.concurrent.CamelThreadFactory;
 
-public class NettyComponent extends UriEndpointComponent {
+public class NettyComponent extends UriEndpointComponent implements SSLContextParametersAware {
+
+    @Metadata(label = "advanced")
     private NettyConfiguration configuration;
+    @Metadata(label = "advanced", defaultValue = "16")
     private int maximumPoolSize = 16;
+    @Metadata(label = "advanced")
     private volatile EventExecutorGroup executorService;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     public NettyComponent() {
         super(NettyEndpoint.class);
@@ -79,6 +87,10 @@ public class NettyComponent extends UriEndpointComponent {
             }
         }
 
+        if (config.getSslContextParameters() == null) {
+            config.setSslContextParameters(retrieveGlobalSslContextParameters());
+        }
+
         // validate config
         config.validateConfiguration();
 
@@ -113,6 +125,19 @@ public class NettyComponent extends UriEndpointComponent {
      */
     public void setExecutorService(EventExecutorGroup executorService) {
         this.executorService = executorService;
+    }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
     }
 
     public EventExecutorGroup getExecutorService() {

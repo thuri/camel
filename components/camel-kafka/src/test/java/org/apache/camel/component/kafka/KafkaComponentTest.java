@@ -36,15 +36,24 @@ public class KafkaComponentTest {
 
     @Test
     public void testPropertiesSet() throws Exception {
-        Map<String, Object> params = new HashMap<String, Object>();
-        params.put("topic", "mytopic");
-        params.put("partitioner", "com.class.Party");
+        String uri = "kafka:mytopic?brokers=broker1:12345,broker2:12566&partitioner=com.class.Party";
 
-        String uri = "kafka:broker1:12345,broker2:12566";
-        String remaining = "broker1:12345,broker2:12566";
-
-        KafkaEndpoint endpoint = new KafkaComponent(context).createEndpoint(uri, remaining, params);
+        KafkaEndpoint endpoint = (KafkaEndpoint) new KafkaComponent(context).createEndpoint(uri);
         assertEquals("broker1:12345,broker2:12566", endpoint.getConfiguration().getBrokers());
+        assertEquals("mytopic", endpoint.getConfiguration().getTopic());
+        assertEquals("com.class.Party", endpoint.getConfiguration().getPartitioner());
+    }
+
+    @Test
+    public void testBrokersOnComponent() throws Exception {
+        KafkaComponent kafka = new KafkaComponent(context);
+        kafka.setBrokers("broker1:12345,broker2:12566");
+
+        String uri = "kafka:mytopic?partitioner=com.class.Party";
+
+        KafkaEndpoint endpoint = (KafkaEndpoint) kafka.createEndpoint(uri);
+        assertEquals("broker1:12345,broker2:12566", endpoint.getConfiguration().getBrokers());
+        assertEquals("broker1:12345,broker2:12566", endpoint.getComponent().getBrokers());
         assertEquals("mytopic", endpoint.getConfiguration().getTopic());
         assertEquals("com.class.Party", endpoint.getConfiguration().getPartitioner());
     }
@@ -54,11 +63,12 @@ public class KafkaComponentTest {
         Map<String, Object> params = new HashMap<String, Object>();
         setProducerProperty(params);
 
-        String uri = "kafka:dev1:12345,dev2:12566";
-        String remaining = "dev1:12345,dev2:12566";
+        String uri = "kafka:mytopic?brokers=dev1:12345,dev2:12566";
+        String remaining = "mytopic";
 
         KafkaEndpoint endpoint = new KafkaComponent(context).createEndpoint(uri, remaining, params);
 
+        assertEquals("mytopic", endpoint.getConfiguration().getTopic());
         assertEquals("1", endpoint.getConfiguration().getRequestRequiredAcks());
         assertEquals(new Integer(1), endpoint.getConfiguration().getBufferMemorySize());
         assertEquals(new Integer(10), endpoint.getConfiguration().getProducerBatchSize());
@@ -108,8 +118,8 @@ public class KafkaComponentTest {
     public void testAllProducerKeys() throws Exception {
         Map<String, Object> params = new HashMap<String, Object>();
 
-        String uri = "kafka:dev1:12345,dev2:12566";
-        String remaining = "dev1:12345,dev2:12566";
+        String uri = "kafka:mytopic?brokers=dev1:12345,dev2:12566";
+        String remaining = "mytopic";
 
         KafkaEndpoint endpoint = new KafkaComponent(context).createEndpoint(uri, remaining, params);
         assertEquals(endpoint.getConfiguration().createProducerProperties().keySet(), getProducerKeys().keySet());
@@ -139,6 +149,7 @@ public class KafkaComponentTest {
         props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "100");
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaConstants.KAFKA_DEFAULT_SERIALIZER);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaConstants.KAFKA_DEFAULT_SERIALIZER);
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "false");
         props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "PLAINTEXT");
         props.put(SslConfigs.SSL_ENABLED_PROTOCOLS_CONFIG, "TLSv1.2, TLSv1.1, TLSv1");
         props.put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "JKS");
@@ -201,5 +212,5 @@ public class KafkaComponentTest {
         params.put("sslKeymanagerAlgorithm", "SunX509");
         params.put("sslTrustmanagerAlgorithm", "PKIX");
     }
-
+    
 }

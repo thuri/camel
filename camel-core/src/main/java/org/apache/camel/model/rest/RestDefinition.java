@@ -32,11 +32,13 @@ import javax.xml.bind.annotation.XmlRootElement;
 import org.apache.camel.CamelContext;
 import org.apache.camel.model.OptionalIdentifiedDefinition;
 import org.apache.camel.model.ProcessorDefinition;
+import org.apache.camel.model.ProcessorDefinitionHelper;
 import org.apache.camel.model.RouteDefinition;
 import org.apache.camel.model.ToDefinition;
 import org.apache.camel.model.ToDynamicDefinition;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.RestConfiguration;
+import org.apache.camel.util.CamelContextHelper;
 import org.apache.camel.util.FileUtil;
 import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.URISupport;
@@ -412,6 +414,13 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
         return this;
     }
 
+    /**
+     * @param classType the canonical class name for the array passed as input
+     *
+     * @deprecated as of 2.19.0. Replaced wtih {@link #type(Class)} with {@code []} appended to canonical class name
+     * , e.g. {@code type(MyClass[].class}
+     */
+    @Deprecated
     public RestDefinition typeList(Class<?> classType) {
         // add to last verb
         if (getVerbs().isEmpty()) {
@@ -435,6 +444,13 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
         return this;
     }
 
+    /**
+     * @param classType the canonical class name for the array passed as output
+     *
+     * @deprecated as of 2.19.0. Replaced wtih {@link #outType(Class)} with {@code []} appended to canonical class name
+     * , e.g. {@code outType(MyClass[].class}
+     */
+    @Deprecated
     public RestDefinition outTypeList(Class<?> classType) {
         // add to last verb
         if (getVerbs().isEmpty()) {
@@ -601,7 +617,17 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
 
         List<RouteDefinition> answer = new ArrayList<RouteDefinition>();
         if (camelContext.getRestConfigurations().isEmpty()) {
-            camelContext.getRestConfiguration();
+            // make sure to initialize a rest configuration when its empty
+            // lookup a global which may have been setup via camel-spring-boot etc
+            RestConfiguration conf = CamelContextHelper.lookup(camelContext, RestConstants.DEFAULT_REST_CONFIGURATION_ID, RestConfiguration.class);
+            if (conf == null) {
+                conf = CamelContextHelper.findByType(camelContext, RestConfiguration.class);
+            }
+            if (conf != null) {
+                camelContext.setRestConfiguration(conf);
+            } else {
+                camelContext.setRestConfiguration(new RestConfiguration());
+            }
         }
         for (RestConfiguration config : camelContext.getRestConfigurations()) {
             addRouteDefinition(camelContext, answer, config.getComponent());
@@ -698,6 +724,16 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
                 route.getOutputs().add(def);
             }
 
+            // ensure property placeholders is resolved on the verb
+            try {
+                ProcessorDefinitionHelper.resolvePropertyPlaceholders(camelContext, verb);
+                for (RestOperationParamDefinition param : verb.getParams()) {
+                    ProcessorDefinitionHelper.resolvePropertyPlaceholders(camelContext, param);
+                }
+            } catch (Exception e) {
+                throw ObjectHelper.wrapRuntimeCamelException(e);
+            }
+
             // add the binding
             RestBindingDefinition binding = new RestBindingDefinition();
             binding.setComponent(component);
@@ -736,7 +772,7 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
                 }
             }
 
-            route.getOutputs().add(0, binding);
+            route.setRestBindingDefinition(binding);
 
             // create the from endpoint uri which is using the rest component
             String from = "rest:" + verb.asVerb() + ":" + buildUri(verb);
@@ -772,7 +808,13 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
                     route.setId(id);
                 }
             }
-            String routeId = route.idOrCreate(camelContext.getNodeIdFactory());
+
+            String routeId = verb.idOrCreate(camelContext.getNodeIdFactory());
+
+            if (!verb.getUsedForGeneratingNodeId()) {
+                routeId = route.idOrCreate(camelContext.getNodeIdFactory());
+            }
+
             verb.setRouteId(routeId);
             options.put("routeId", routeId);
             if (component != null && !component.isEmpty()) {
@@ -815,36 +857,38 @@ public class RestDefinition extends OptionalIdentifiedDefinition<RestDefinition>
             }
 
             // each {} is a parameter (url templating)
-            String[] arr = allPath.split("\\/");
-            for (String a : arr) {
-                // need to resolve property placeholders first
-                try {
-                    a = camelContext.resolvePropertyPlaceholders(a);
-                } catch (Exception e) {
-                    throw ObjectHelper.wrapRuntimeCamelException(e);
-                }
-                if (a.startsWith("{") && a.endsWith("}")) {
-                    String key = a.substring(1, a.length() - 1);
-                    //  merge if exists
-                    boolean found = false;
-                    for (RestOperationParamDefinition param : verb.getParams()) {
-                        // name is mandatory
-                        String name = param.getName();
-                        ObjectHelper.notEmpty(name, "parameter name");
-                        // need to resolve property placeholders first
-                        try {
-                            name = camelContext.resolvePropertyPlaceholders(name);
-                        } catch (Exception e) {
-                            throw ObjectHelper.wrapRuntimeCamelException(e);
-                        }
-                        if (name.equalsIgnoreCase(key)) {
-                            param.type(RestParamType.path);
-                            found = true;
-                            break;
-                        }
+            if (allPath != null) {
+                String[] arr = allPath.split("\\/");
+                for (String a : arr) {
+                    // need to resolve property placeholders first
+                    try {
+                        a = camelContext.resolvePropertyPlaceholders(a);
+                    } catch (Exception e) {
+                        throw ObjectHelper.wrapRuntimeCamelException(e);
                     }
-                    if (!found) {
-                        param(verb).name(key).type(RestParamType.path).endParam();
+                    if (a.startsWith("{") && a.endsWith("}")) {
+                        String key = a.substring(1, a.length() - 1);
+                        //  merge if exists
+                        boolean found = false;
+                        for (RestOperationParamDefinition param : verb.getParams()) {
+                            // name is mandatory
+                            String name = param.getName();
+                            ObjectHelper.notEmpty(name, "parameter name");
+                            // need to resolve property placeholders first
+                            try {
+                                name = camelContext.resolvePropertyPlaceholders(name);
+                            } catch (Exception e) {
+                                throw ObjectHelper.wrapRuntimeCamelException(e);
+                            }
+                            if (name.equalsIgnoreCase(key)) {
+                                param.type(RestParamType.path);
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            param(verb).name(key).type(RestParamType.path).endParam();
+                        }
                     }
                 }
             }

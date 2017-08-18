@@ -19,16 +19,21 @@ package org.apache.camel.component.lumberjack;
 import java.util.Map;
 
 import org.apache.camel.Endpoint;
+import org.apache.camel.SSLContextParametersAware;
 import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.util.jsse.SSLContextParameters;
 
 /**
  * The class is the Camel component for the Lumberjack server
  */
-public class LumberjackComponent extends UriEndpointComponent {
+public class LumberjackComponent extends UriEndpointComponent implements SSLContextParametersAware {
     static final int DEFAULT_PORT = 5044;
 
+    @Metadata(label = "security")
     private SSLContextParameters sslContextParameters;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     public LumberjackComponent() {
         this(LumberjackEndpoint.class);
@@ -53,8 +58,13 @@ public class LumberjackComponent extends UriEndpointComponent {
         }
 
         // Create the endpoint
-        Endpoint answer = new LumberjackEndpoint(uri, this, host, port);
+        LumberjackEndpoint answer = new LumberjackEndpoint(uri, this, host, port);
         setProperties(answer, parameters);
+
+        if (answer.getSslContextParameters() == null) {
+            answer.setSslContextParameters(retrieveGlobalSslContextParameters());
+        }
+
         return answer;
     }
 
@@ -69,4 +79,18 @@ public class LumberjackComponent extends UriEndpointComponent {
     public void setSslContextParameters(SSLContextParameters sslContextParameters) {
         this.sslContextParameters = sslContextParameters;
     }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
+    }
+
 }

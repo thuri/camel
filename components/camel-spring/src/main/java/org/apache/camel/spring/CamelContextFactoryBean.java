@@ -19,6 +19,7 @@ package org.apache.camel.spring;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlAttribute;
@@ -35,13 +36,16 @@ import org.apache.camel.ShutdownRunningTask;
 import org.apache.camel.TypeConverterExists;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.properties.PropertiesComponent;
+import org.apache.camel.component.properties.PropertiesLocation;
 import org.apache.camel.core.xml.AbstractCamelContextFactoryBean;
+import org.apache.camel.core.xml.AbstractCamelFactoryBean;
 import org.apache.camel.core.xml.CamelJMXAgentDefinition;
 import org.apache.camel.core.xml.CamelPropertyPlaceholderDefinition;
 import org.apache.camel.core.xml.CamelProxyFactoryDefinition;
 import org.apache.camel.core.xml.CamelServiceExporterDefinition;
 import org.apache.camel.core.xml.CamelStreamCachingStrategyDefinition;
 import org.apache.camel.model.ContextScanDefinition;
+import org.apache.camel.model.GlobalOptionsDefinition;
 import org.apache.camel.model.HystrixConfigurationDefinition;
 import org.apache.camel.model.InterceptDefinition;
 import org.apache.camel.model.InterceptFromDefinition;
@@ -55,19 +59,18 @@ import org.apache.camel.model.RouteBuilderDefinition;
 import org.apache.camel.model.RouteContextRefDefinition;
 import org.apache.camel.model.RouteDefinition;
 import org.apache.camel.model.ThreadPoolProfileDefinition;
+import org.apache.camel.model.cloud.ServiceCallConfigurationDefinition;
 import org.apache.camel.model.dataformat.DataFormatsDefinition;
-import org.apache.camel.model.remote.ConsulConfigurationDefinition;
-import org.apache.camel.model.remote.DnsConfigurationDefinition;
-import org.apache.camel.model.remote.EtcdConfigurationDefinition;
-import org.apache.camel.model.remote.KubernetesConfigurationDefinition;
-import org.apache.camel.model.remote.RibbonConfigurationDefinition;
 import org.apache.camel.model.rest.RestConfigurationDefinition;
 import org.apache.camel.model.rest.RestDefinition;
+import org.apache.camel.model.transformer.TransformersDefinition;
+import org.apache.camel.model.validator.ValidatorsDefinition;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.PackageScanFilter;
 import org.apache.camel.spi.Registry;
 import org.apache.camel.spring.spi.BridgePropertyPlaceholderConfigurer;
 import org.apache.camel.util.CamelContextHelper;
+import org.apache.camel.util.StopWatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -76,22 +79,24 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
+import org.springframework.context.Lifecycle;
+import org.springframework.context.Phased;
 import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.core.Ordered;
 
 import static org.apache.camel.util.ObjectHelper.wrapRuntimeCamelException;
 
 /**
  * CamelContext using XML configuration.
- *
- * @version 
  */
 @Metadata(label = "spring,configuration")
 @XmlRootElement(name = "camelContext")
 @XmlAccessorType(XmlAccessType.FIELD)
 public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<SpringCamelContext>
-        implements FactoryBean<SpringCamelContext>, InitializingBean, DisposableBean, ApplicationContextAware, ApplicationListener<ApplicationEvent> {
+        implements FactoryBean<SpringCamelContext>, InitializingBean, DisposableBean, ApplicationContextAware, Lifecycle,
+        Phased, ApplicationListener<ContextRefreshedEvent>, Ordered {
+
     private static final Logger LOG = LoggerFactory.getLogger(CamelContextFactoryBean.class);
 
     @XmlAttribute(name = "depends-on")
@@ -100,6 +105,8 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     private String trace;
     @XmlAttribute @Metadata(defaultValue = "true")
     private String messageHistory;
+    @XmlAttribute @Metadata(defaultValue = "false")
+    private String logMask;
     @XmlAttribute
     private String logExhaustedMessageBody;
     @XmlAttribute
@@ -114,8 +121,13 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     private String autoStartup;
     @XmlAttribute @Metadata(defaultValue = "true")
     private String shutdownEager;
+    @XmlAttribute @Metadata(defaultValue = "false")
+    @Deprecated
+    private String registerEndpointIdsFromRoute;
     @XmlAttribute
     private String useMDCLogging;
+    @XmlAttribute
+    private String useDataType;
     @XmlAttribute @Metadata(defaultValue = "true")
     private String useBreadcrumb;
     @XmlAttribute
@@ -131,16 +143,21 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     @XmlAttribute @Metadata(defaultValue = "CompleteCurrentTaskOnly")
     private ShutdownRunningTask shutdownRunningTask;
     @XmlAttribute
-    @Deprecated
+    @Deprecated  @Metadata(defaultValue = "false")
     private Boolean lazyLoadTypeConverters;
+    @XmlAttribute @Metadata(defaultValue = "true")
+    private Boolean loadTypeConverters;
     @XmlAttribute
     private Boolean typeConverterStatisticsEnabled;
     @XmlAttribute @Metadata(defaultValue = "Override")
     private TypeConverterExists typeConverterExists;
     @XmlAttribute @Metadata(defaultValue = "WARN")
     private LoggingLevel typeConverterExistsLoggingLevel;
+    @Deprecated
     @XmlElement(name = "properties")
     private PropertiesDefinition properties;
+    @XmlElement(name = "globalOptions")
+    private GlobalOptionsDefinition globalOptions;
     @XmlElement(name = "propertyPlaceholder", type = CamelPropertyPlaceholderDefinition.class)
     private CamelPropertyPlaceholderDefinition camelPropertyPlaceholder;
     @XmlElement(name = "package")
@@ -154,19 +171,23 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     @XmlElement(name = "jmxAgent", type = CamelJMXAgentDefinition.class)
     private CamelJMXAgentDefinition camelJMXAgent;
     @XmlElements({
-            @XmlElement(name = "hystrixConfiguration", type = HystrixConfigurationDefinition.class),
-            @XmlElement(name = "consulConfiguration", type = ConsulConfigurationDefinition.class),
-            @XmlElement(name = "dnsConfiguration", type = DnsConfigurationDefinition.class),
-            @XmlElement(name = "etcdConfiguration", type = EtcdConfigurationDefinition.class),
-            @XmlElement(name = "kubernetesConfiguration", type = KubernetesConfigurationDefinition.class),
-            @XmlElement(name = "ribbonConfiguration", type = RibbonConfigurationDefinition.class),
             @XmlElement(name = "template", type = CamelProducerTemplateFactoryBean.class),
             @XmlElement(name = "fluentTemplate", type = CamelFluentProducerTemplateFactoryBean.class),
-            @XmlElement(name = "consumerTemplate", type = CamelConsumerTemplateFactoryBean.class),
-            @XmlElement(name = "proxy", type = CamelProxyFactoryDefinition.class),
-            @XmlElement(name = "export", type = CamelServiceExporterDefinition.class),
-            @XmlElement(name = "errorHandler", type = ErrorHandlerDefinition.class)})
+            @XmlElement(name = "consumerTemplate", type = CamelConsumerTemplateFactoryBean.class)})
+    private List<AbstractCamelFactoryBean<?>> beansFactory;
+    @XmlElements({
+        @XmlElement(name = "proxy", type = CamelProxyFactoryDefinition.class),
+        @XmlElement(name = "export", type = CamelServiceExporterDefinition.class),
+        @XmlElement(name = "errorHandler", type = ErrorHandlerDefinition.class) })
     private List<?> beans;
+    @XmlElement(name = "defaultServiceCallConfiguration")
+    private ServiceCallConfigurationDefinition defaultServiceCallConfiguration;
+    @XmlElement(name = "serviceCallConfiguration", type = ServiceCallConfigurationDefinition.class)
+    private List<ServiceCallConfigurationDefinition> serviceCallConfigurations;
+    @XmlElement(name = "defaultHystrixConfiguration")
+    private HystrixConfigurationDefinition defaultHystrixConfiguration;
+    @XmlElement(name = "hystrixConfiguration", type = HystrixConfigurationDefinition.class)
+    private List<HystrixConfigurationDefinition> hystrixConfigurations;
     @XmlElement(name = "routeBuilder")
     private List<RouteBuilderDefinition> builderRefs = new ArrayList<RouteBuilderDefinition>();
     @XmlElement(name = "routeContextRef")
@@ -181,6 +202,10 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     private List<CamelEndpointFactoryBean> endpoints;
     @XmlElement(name = "dataFormats")
     private DataFormatsDefinition dataFormats;
+    @XmlElement(name = "transformers")
+    private TransformersDefinition transformers;
+    @XmlElement(name = "validators")
+    private ValidatorsDefinition validators;
     @XmlElement(name = "redeliveryPolicyProfile")
     private List<CamelRedeliveryPolicyFactoryBean> redeliveryPolicies;
     @XmlElement(name = "onException")
@@ -214,7 +239,7 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     public Class<SpringCamelContext> getObjectType() {
         return SpringCamelContext.class;
     }
-    
+
     protected <S> S getBeanForType(Class<S> clazz) {
         S bean = null;
         String[] names = getApplicationContext().getBeanNamesForType(clazz, true, true);
@@ -272,6 +297,8 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
 
     @Override
     public void afterPropertiesSet() throws Exception {
+        StopWatch watch = new StopWatch();
+
         super.afterPropertiesSet();
 
         Boolean shutdownEager = CamelContextHelper.parseBoolean(getContext(), getShutdownEager());
@@ -279,6 +306,8 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
             LOG.debug("Using shutdownEager: " + shutdownEager);
             getContext().setShutdownEager(shutdownEager);
         }
+
+        LOG.debug("afterPropertiesSet() took {} millis", watch.stop());
     }
 
     protected void initCustomRegistry(SpringCamelContext context) {
@@ -312,62 +341,78 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
             // replace existing resolver with us
             configurer.setResolver(pc.getPropertiesResolver());
             configurer.setParser(pc.getPropertiesParser());
-            String ref = "ref:" + id;
             // use the bridge to handle the resolve and parsing
             pc.setPropertiesResolver(configurer);
             pc.setPropertiesParser(configurer);
+
             // and update locations to have our as ref first
-            String[] locations = pc.getLocations();
-            String[] updatedLocations;
-            if (locations != null && locations.length > 0) {
-                updatedLocations = new String[locations.length + 1];
-                updatedLocations[0] = ref;
-                System.arraycopy(locations, 0, updatedLocations, 1, locations.length);
-            } else {
-                updatedLocations = new String[]{ref};
-            }
-            pc.setLocations(updatedLocations);
+            List<PropertiesLocation> locations = new ArrayList<>(pc.getLocations());
+            locations.add(0, new PropertiesLocation("ref", id));
+
+            pc.setLocations(locations);
         } else if (beans.size() > 1) {
             LOG.warn("Cannot bridge Camel and Spring property placeholders, as exact only 1 bean of type BridgePropertyPlaceholderConfigurer"
                     + " must be defined, was {} beans defined.", beans.size());
         }
     }
 
-    public void onApplicationEvent(ApplicationEvent event) {
-        // From Spring 3.0.1, The BeanFactory applicationEventListener 
-        // and Bean's applicationEventListener will be called,
-        // So we just delegate the onApplicationEvent call here.
-
-        SpringCamelContext context = getContext(false);
-        if (context != null) {
-            // we need to defer setting up routes until Spring has done all its dependency injection
-            // which is only guaranteed to be done when it emits the ContextRefreshedEvent event.
-            if (event instanceof ContextRefreshedEvent) {
-                try {
-                    setupRoutes();
-                } catch (Exception e) {
-                    throw wrapRuntimeCamelException(e);
-                }
-            }
-            // let the spring camel context handle the events
-            context.onApplicationEvent(event);
-        } else {
-            LOG.debug("Publishing spring-event: {}", event);
-
-            if (event instanceof ContextRefreshedEvent) {
-                // now lets start the CamelContext so that all its possible
-                // dependencies are initialized
-                try {
-                    // we need to defer setting up routes until Spring has done all its dependency injection
-                    // which is only guaranteed to be done when it emits the ContextRefreshedEvent event.
-                    setupRoutes();
-                    LOG.trace("Starting the context now");
-                    getContext().start();
-                } catch (Exception e) {
-                    throw wrapRuntimeCamelException(e);
-                }
-            }
+    @Override
+    public void start() {
+        try {
+            setupRoutes();
+        } catch (Exception e) {
+            throw wrapRuntimeCamelException(e);
         }
+
+        // when the routes are setup we need to start the Camel context
+        context.start();
+    }
+
+    @Override
+    public void stop() {
+        if (context != null) {
+            context.stop();
+        }
+    }
+
+    @Override
+    public boolean isRunning() {
+        return context != null && context.isRunning();
+    }
+
+    @Override
+    public int getPhase() {
+        // the factory starts the context from
+        // onApplicationEvent(ContextRefreshedEvent) so the phase we're
+        // in only influences when the context is to be stopped, and
+        // we want the CamelContext to be first in line to get stopped
+        // if we wanted the phase to be considered while starting, we
+        // would need to implement SmartLifecycle (see
+        // DefaultLifecycleProcessor::startBeans)
+        // we use LOWEST_PRECEDENCE here as this is taken into account
+        // only when stopping and then in reversed order
+        return LOWEST_PRECEDENCE - 1;
+    }
+
+    @Override
+    public int getOrder() {
+        // CamelContextFactoryBean implements Ordered so that it's the 
+        // second to last in ApplicationListener to receive events,
+        // SpringCamelContext should be the last one, this is important
+        // for startup as we want all resources to be ready and all
+        // routes added to the context (see setupRoutes() and
+        // org.apache.camel.spring.boot.RoutesCollector)
+        return LOWEST_PRECEDENCE - 1;
+    }
+
+    @Override
+    public void onApplicationEvent(final ContextRefreshedEvent event) {
+        // start the CamelContext when the Spring ApplicationContext is
+        // done initializing, as the last step in ApplicationContext
+        // being started/refreshed, there could be a race condition with
+        // other ApplicationListeners that react to
+        // ContextRefreshedEvent but this is the best that we can do
+        start();
     }
 
     // Properties
@@ -380,6 +425,7 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
         return applicationContext;
     }
 
+    @Override
     public void setApplicationContext(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
     }
@@ -399,8 +445,9 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
      * Create the context
      */
     protected SpringCamelContext createContext() {
-        SpringCamelContext ctx = newCamelContext();        
-        ctx.setName(getId());        
+        SpringCamelContext ctx = newCamelContext();
+        ctx.setName(getId());
+
         return ctx;
     }
 
@@ -500,15 +547,33 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
         this.interceptSendToEndpoints = interceptSendToEndpoints;
     }
 
+    @Deprecated
     public PropertiesDefinition getProperties() {
         return properties;
     }
 
+    @Override
+    public GlobalOptionsDefinition getGlobalOptions() {
+        return globalOptions;
+    }
+
     /**
-     * Configuration of CamelContext properties such as limit of debug logging and other general options.
+     * Configuration of CamelContext properties such as limit of debug logging
+     * and other general options.
+     * 
+     * @deprecated Use {@link GlobalOptionsDefinition} instead.
      */
+    @Deprecated
     public void setProperties(PropertiesDefinition properties) {
         this.properties = properties;
+    }
+
+    /**
+     * Configuration of CamelContext properties such as limit of debug logging
+     * and other general options.
+     */
+    public void setGlobalOptions(GlobalOptionsDefinition globalOptions) {
+        this.globalOptions = globalOptions;
     }
 
     public String[] getPackages() {
@@ -611,6 +676,17 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
         this.messageHistory = messageHistory;
     }
 
+    public String getLogMask() {
+        return logMask;
+    }
+
+    /**
+     * Sets whether security mask for Logging is enabled or not.
+     */
+    public void setLogMask(String logMask) {
+        this.logMask = logMask;
+    }
+
     public String getLogExhaustedMessageBody() {
         return logExhaustedMessageBody;
     }
@@ -687,6 +763,19 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
         this.shutdownEager = shutdownEager;
     }
 
+    public String getRegisterEndpointIdsFromRoute() {
+        return registerEndpointIdsFromRoute;
+    }
+
+    /**
+     * Sets whether to register endpoints that has id attribute assigned in the Spring registry.
+     * <p/>
+     * This mode is by default false, but can be turned on for backwards compatibility.
+     */
+    public void setRegisterEndpointIdsFromRoute(String registerEndpointIdsFromRoute) {
+        this.registerEndpointIdsFromRoute = registerEndpointIdsFromRoute;
+    }
+
     public String getUseMDCLogging() {
         return useMDCLogging;
     }
@@ -696,6 +785,24 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
      */
     public void setUseMDCLogging(String useMDCLogging) {
         this.useMDCLogging = useMDCLogging;
+    }
+
+    public String getUseDataType() {
+        return useDataType;
+    }
+
+    /**
+     * Whether to enable using data type on Camel messages.
+     * <p/>
+     * Data type are automatic turned on if:
+     * <ul>
+     *   <li>one ore more routes has been explicit configured with input and output types</li>
+     *   <li>when using rest-dsl with binding turned on</li>
+     * </ul>
+     * Otherwise data type is default off.
+     */
+    public void setUseDataType(String useDataType) {
+        this.useDataType = useDataType;
     }
 
     public String getUseBreadcrumb() {
@@ -774,6 +881,24 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     @Deprecated
     public void setLazyLoadTypeConverters(Boolean lazyLoadTypeConverters) {
         this.lazyLoadTypeConverters = lazyLoadTypeConverters;
+    }
+
+    @Override
+    public Boolean getLoadTypeConverters() {
+        return loadTypeConverters;
+    }
+
+    /**
+     * Sets whether to load custom type converters by scanning classpath.
+     * This can be turned off if you are only using Camel components
+     * that does not provide type converters which is needed at runtime.
+     * In such situations setting this option to false, can speedup starting
+     * Camel.
+     *
+     * @param loadTypeConverters whether to load custom type converters.
+     */
+    public void setLoadTypeConverters(Boolean loadTypeConverters) {
+        this.loadTypeConverters = loadTypeConverters;
     }
 
     public Boolean getTypeConverterStatisticsEnabled() {
@@ -880,12 +1005,47 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     }
 
     /**
+     * Configuration of transformers.
+     */
+    public void setTransformers(TransformersDefinition transformers) {
+        this.transformers = transformers;
+    }
+
+    public TransformersDefinition getTransformers() {
+        return transformers;
+    }
+
+    /**
+     * Configuration of validators.
+     */
+    public void setValidators(ValidatorsDefinition validators) {
+        this.validators = validators;
+    }
+
+    public ValidatorsDefinition getValidators() {
+        return validators;
+    }
+
+    /**
      * Configuration of redelivery settings.
      */
     public void setRedeliveryPolicies(List<CamelRedeliveryPolicyFactoryBean> redeliveryPolicies) {
         this.redeliveryPolicies = redeliveryPolicies;
     }
 
+    @Override
+    public List<AbstractCamelFactoryBean<?>> getBeansFactory() {
+        return beansFactory;
+    }
+
+    /**
+     * Miscellaneous configurations
+     */
+    public void setBeansFactory(List<AbstractCamelFactoryBean<?>> beansFactory) {
+        this.beansFactory = beansFactory;
+    }
+
+    @Override
     public List<?> getBeans() {
         return beans;
     }
@@ -895,6 +1055,54 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
      */
     public void setBeans(List<?> beans) {
         this.beans = beans;
+    }
+
+    @Override
+    public ServiceCallConfigurationDefinition getDefaultServiceCallConfiguration() {
+        return defaultServiceCallConfiguration;
+    }
+
+    /**
+     * ServiceCall EIP default configuration
+     */
+    public void setDefaultServiceCallConfiguration(ServiceCallConfigurationDefinition defaultServiceCallConfiguration) {
+        this.defaultServiceCallConfiguration = defaultServiceCallConfiguration;
+    }
+
+    @Override
+    public List<ServiceCallConfigurationDefinition> getServiceCallConfigurations() {
+        return serviceCallConfigurations;
+    }
+
+    /**
+     * ServiceCall EIP configurations
+     */
+    public void setServiceCallConfigurations(List<ServiceCallConfigurationDefinition> serviceCallConfigurations) {
+        this.serviceCallConfigurations = serviceCallConfigurations;
+    }
+
+    @Override
+    public List<HystrixConfigurationDefinition> getHystrixConfigurations() {
+        return hystrixConfigurations;
+    }
+
+    @Override
+    public HystrixConfigurationDefinition getDefaultHystrixConfiguration() {
+        return defaultHystrixConfiguration;
+    }
+
+    /**
+     * Hystrix EIP default configuration
+     */
+    public void setDefaultHystrixConfiguration(HystrixConfigurationDefinition defaultHystrixConfiguration) {
+        this.defaultHystrixConfiguration = defaultHystrixConfiguration;
+    }
+
+    /**
+     * Hystrix EIP configurations
+     */
+    public void setHystrixConfigurations(List<HystrixConfigurationDefinition> hystrixConfigurations) {
+        this.hystrixConfigurations = hystrixConfigurations;
     }
 
     /**
@@ -981,5 +1189,4 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Spr
     public void setImplicitId(boolean flag) {
         implicitId = flag;
     }
-
 }

@@ -16,7 +16,6 @@
  */
 package org.apache.camel.component.weather.geolocation;
 
-import org.apache.camel.CamelContext;
 import org.apache.camel.component.weather.WeatherComponent;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpStatus;
@@ -38,7 +37,7 @@ public class FreeGeoIpGeoLocationProvider implements GeoLocationProvider {
     @Override
     public GeoLocation getCurrentGeoLocation() throws Exception {
         HttpClient httpClient = component.getHttpClient();
-        GetMethod getMethod = new GetMethod("http://freegeoip.io/json/");
+        GetMethod getMethod = new GetMethod("https://freegeoip.io/json/");
         try {
             int statusCode = httpClient.executeMethod(getMethod);
             if (statusCode != HttpStatus.SC_OK) {

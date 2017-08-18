@@ -25,12 +25,14 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Consumer;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Processor;
+import org.apache.camel.SSLContextParametersAware;
 import org.apache.camel.component.netty.NettyComponent;
 import org.apache.camel.component.netty.NettyConfiguration;
 import org.apache.camel.component.netty.NettyServerBootstrapConfiguration;
 import org.apache.camel.component.netty.http.handlers.HttpServerMultiplexChannelHandler;
 import org.apache.camel.spi.HeaderFilterStrategy;
 import org.apache.camel.spi.HeaderFilterStrategyAware;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.RestApiConsumerFactory;
 import org.apache.camel.spi.RestConfiguration;
 import org.apache.camel.spi.RestConsumerFactory;
@@ -47,16 +49,21 @@ import org.slf4j.LoggerFactory;
 /**
  * Netty HTTP based component.
  */
-public class NettyHttpComponent extends NettyComponent implements HeaderFilterStrategyAware, RestConsumerFactory, RestApiConsumerFactory {
+public class NettyHttpComponent extends NettyComponent implements HeaderFilterStrategyAware, RestConsumerFactory, RestApiConsumerFactory, SSLContextParametersAware {
 
     private static final Logger LOG = LoggerFactory.getLogger(NettyHttpComponent.class);
 
     // factories which is created by this component and therefore manage their lifecycles
     private final Map<Integer, HttpServerConsumerChannelFactory> multiplexChannelHandlers = new HashMap<Integer, HttpServerConsumerChannelFactory>();
     private final Map<String, HttpServerBootstrapFactory> bootstrapFactories = new HashMap<String, HttpServerBootstrapFactory>();
+    @Metadata(label = "advanced")
     private NettyHttpBinding nettyHttpBinding;
+    @Metadata(label = "advanced")
     private HeaderFilterStrategy headerFilterStrategy;
+    @Metadata(label = "security")
     private NettyHttpSecurityConfiguration securityConfiguration;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     public NettyHttpComponent() {
         // use the http configuration and filter strategy
@@ -136,6 +143,10 @@ public class NettyHttpComponent extends NettyComponent implements HeaderFilterSt
         config = parseConfiguration(config, remaining, parameters);
         setProperties(config, parameters);
 
+        if (config.getSslContextParameters() == null) {
+            config.setSslContextParameters(retrieveGlobalSslContextParameters());
+        }
+
         // validate config
         config.validateConfiguration();
 
@@ -214,6 +225,15 @@ public class NettyHttpComponent extends NettyComponent implements HeaderFilterSt
         this.nettyHttpBinding = nettyHttpBinding;
     }
 
+    @Override
+    public NettyHttpConfiguration getConfiguration() {
+        return (NettyHttpConfiguration) super.getConfiguration();
+    }
+
+    public void setConfiguration(NettyHttpConfiguration configuration) {
+        super.setConfiguration(configuration);
+    }
+
     public HeaderFilterStrategy getHeaderFilterStrategy() {
         return headerFilterStrategy;
     }
@@ -234,6 +254,19 @@ public class NettyHttpComponent extends NettyComponent implements HeaderFilterSt
      */
     public void setSecurityConfiguration(NettyHttpSecurityConfiguration securityConfiguration) {
         this.securityConfiguration = securityConfiguration;
+    }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
     }
 
     public synchronized HttpServerConsumerChannelFactory getMultiplexChannelHandler(int port) {

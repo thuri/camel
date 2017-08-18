@@ -19,20 +19,34 @@ package org.apache.camel.maven.packaging.model;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.camel.maven.packaging.StringHelper.cutLastZeroDigit;
+
 public class LanguageModel {
+
+    private final boolean coreOnly;
 
     private String kind;
     private String name;
     private String modelName;
     private String title;
     private String description;
+    private String firstVersion;
     private String label;
     private String deprecated;
+    private String deprecationNote;
     private String javaType;
     private String groupId;
     private String artifactId;
     private String version;
     private final List<LanguageOptionModel> languageOptions = new ArrayList<LanguageOptionModel>();
+
+    public LanguageModel() {
+        this(false);
+    }
+
+    public LanguageModel(boolean coreOnly) {
+        this.coreOnly = coreOnly;
+    }
 
     public String getKind() {
         return kind;
@@ -74,6 +88,14 @@ public class LanguageModel {
         this.description = description;
     }
 
+    public String getFirstVersion() {
+        return firstVersion;
+    }
+
+    public void setFirstVersion(String firstVersion) {
+        this.firstVersion = firstVersion;
+    }
+
     public String getLabel() {
         return label;
     }
@@ -88,6 +110,14 @@ public class LanguageModel {
 
     public void setDeprecated(String deprecated) {
         this.deprecated = deprecated;
+    }
+
+    public String getDeprecationNote() {
+        return deprecationNote;
+    }
+
+    public void setDeprecationNote(String deprecationNote) {
+        this.deprecationNote = deprecationNote;
     }
 
     public String getJavaType() {
@@ -148,10 +178,14 @@ public class LanguageModel {
 
     public String getDocLink() {
         if ("camel-core".equals(artifactId)) {
-            return "src/main/docs";
+            return coreOnly ? "src/main/docs" : "../camel-core/src/main/docs";
         } else {
             return artifactId + "/src/main/docs";
         }
+    }
+
+    public String getFirstVersionShort() {
+        return cutLastZeroDigit(firstVersion);
     }
 
 }

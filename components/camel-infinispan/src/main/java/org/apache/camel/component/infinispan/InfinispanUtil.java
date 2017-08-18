@@ -63,7 +63,6 @@ public final class InfinispanUtil {
         }
     }
 
-    @SuppressWarnings("unchecked")
     public static RemoteCacheManager asRemote(BasicCacheContainer container) {
         return RemoteCacheManager.class.cast(container);
     }
@@ -107,22 +106,8 @@ public final class InfinispanUtil {
         return ObjectHelper.isEmpty(message.getHeader(header));
     }
 
-    public static BasicCache<Object, Object> getCache(BasicCacheContainer cacheContainer, String cacheName) {
-        return ObjectHelper.isEmpty(cacheName) ? cacheContainer.getCache() : cacheContainer.getCache(cacheName);
-    }
-
-    public static Properties loadProperties(CamelContext camelContext, String uri) throws IOException {
-        if (camelContext != null) {
-            try (InputStream is = ResourceHelper.resolveMandatoryResourceAsInputStream(camelContext, uri)) {
-                Properties properties = new Properties();
-                properties.load(is);
-
-                return properties;
-            } catch (IOException e) {
-            }
-        }
-
-        try (InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream(uri)) {
+    public static Properties loadProperties(CamelContext camelContext, String uri) throws Exception {
+        try (InputStream is = openInputStream(camelContext, uri)) {
             Properties properties = new Properties();
             properties.load(is);
 
@@ -131,5 +116,14 @@ public final class InfinispanUtil {
         }
 
         throw new FileNotFoundException("Cannot find resource: " + uri);
+    }
+
+    public static InputStream openInputStream(CamelContext camelContext, String uri) throws Exception {
+        if (camelContext != null) {
+            uri = camelContext.resolvePropertyPlaceholders(uri);
+            return ResourceHelper.resolveMandatoryResourceAsInputStream(camelContext, uri);
+        }
+
+        return Thread.currentThread().getContextClassLoader().getResourceAsStream(uri);
     }
 }

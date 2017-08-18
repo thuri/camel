@@ -24,28 +24,33 @@ import org.apache.camel.Producer;
 import org.apache.camel.impl.DefaultEndpoint;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
+import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
-import org.apache.camel.util.ObjectHelper;
 
-
-@UriEndpoint(scheme = "chronicle-engine", title = "Chronicle Engine", syntax = "chronicle-engine:addresses/path", consumerClass = ChronicleEngineConsumer.class, label = "Chronicle")
+/**
+ * The camel chronicle-engine component let you leverage the power of OpenHFT's <a href="https://github.com/OpenHFT/Chronicle-Engine">Chronicle-Engine</a>.
+ */
+@UriEndpoint(
+    firstVersion = "2.18.0", 
+    scheme = "chronicle-engine",
+    title = "Chronicle Engine",
+    syntax = "chronicle-engine:addresses/path", 
+    consumerClass = ChronicleEngineConsumer.class, 
+    label = "datagrid,cache")
 public class ChronicleEngineEndpoint extends DefaultEndpoint {
-    private final ChronicleEngineConfiguration configuration;
 
-    @UriPath(description = "engine path")
+    @UriPath(description = "Engine addresses. Multiple addresses can be separated by comma.")
     @Metadata(required = "true")
-    private final String path;
+    private String addresses;
+    @UriPath(description = "Engine path")
+    @Metadata(required = "true")
+    private String path;
+    @UriParam
+    private ChronicleEngineConfiguration configuration;
 
     public ChronicleEngineEndpoint(String uri, ChronicleEngineComponent component, ChronicleEngineConfiguration configuration) throws Exception {
         super(uri, component);
-
-        ObjectHelper.notNull(configuration.getCamelContext(), "camelContext");
-        ObjectHelper.notNull(configuration.getAddresses(), "addresses");
-        ObjectHelper.notNull(configuration.getPath(), "path");
-        ObjectHelper.notNull(configuration.getWireType(), "wireType");
-
         this.configuration = configuration;
-        this.path = configuration.getPath();
     }
 
     @Override
@@ -65,10 +70,25 @@ public class ChronicleEngineEndpoint extends DefaultEndpoint {
 
     @Override
     protected void doStart() throws Exception {
+        if (!this.path.startsWith("/")) {
+            this.path = "/" + this.path;
+        }
     }
 
     @Override
     protected void doStop() throws Exception {
+    }
+
+    public void setAddresses(String addresses) {
+        this.addresses = addresses;
+    }
+
+    public void setPath(String path) {
+        this.path = path;
+    }
+
+    public void setConfiguration(ChronicleEngineConfiguration configuration) {
+        this.configuration = configuration;
     }
 
     // ****************************
@@ -85,12 +105,13 @@ public class ChronicleEngineEndpoint extends DefaultEndpoint {
 
     protected String getUri() {
         return configuration.isPersistent()
-            ? configuration.getPath()
-            : configuration.getPath() + "?dontPersist=true";
+            ? path
+            : path + "?dontPersist=true";
     }
 
     protected AssetTree createRemoteAssetTree() {
+        String[] urls = addresses.split(",");
         return new VanillaAssetTree()
-            .forRemoteAccess(configuration.getAddresses(), configuration.getWireType());
+            .forRemoteAccess(urls, configuration.getWireType());
     }
 }

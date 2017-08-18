@@ -17,6 +17,7 @@
 package org.apache.camel.model;
 
 import java.util.Map;
+
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
 import javax.xml.bind.annotation.XmlAttribute;
@@ -27,7 +28,9 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Expression;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.Processor;
+import org.apache.camel.processor.DefaultMaskingFormatter;
 import org.apache.camel.processor.LogProcessor;
+import org.apache.camel.spi.MaskingFormatter;
 import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.RouteContext;
 import org.apache.camel.util.CamelContextHelper;
@@ -41,7 +44,7 @@ import org.slf4j.LoggerFactory;
  *
  * @version 
  */
-@Metadata(label = "configuration")
+@Metadata(label = "eip,configuration")
 @XmlRootElement(name = "log")
 @XmlAccessorType(XmlAccessType.FIELD)
 public class LogDefinition extends NoOutputDefinition<LogDefinition> {
@@ -107,7 +110,7 @@ public class LogDefinition extends NoOutputDefinition<LogDefinition> {
         if (logger == null) {
             String name = getLogName();
             if (name == null) {
-                name = routeContext.getCamelContext().getProperty(Exchange.LOG_EIP_NAME);
+                name = routeContext.getCamelContext().getGlobalOption(Exchange.LOG_EIP_NAME);
                 if (name != null) {
                     LOG.debug("Using logName from CamelContext properties: {}", name);
                 }
@@ -123,7 +126,18 @@ public class LogDefinition extends NoOutputDefinition<LogDefinition> {
         LoggingLevel level = getLoggingLevel() != null ? getLoggingLevel() : LoggingLevel.INFO;
         CamelLogger camelLogger = new CamelLogger(logger, level, getMarker());
 
-        return new LogProcessor(exp, camelLogger);
+        return new LogProcessor(exp, camelLogger, getMaskingFormatter(routeContext), routeContext.getCamelContext().getLogListeners());
+    }
+
+    private MaskingFormatter getMaskingFormatter(RouteContext routeContext) {
+        if (routeContext.isLogMask()) {
+            MaskingFormatter formatter = routeContext.getCamelContext().getRegistry().lookupByNameAndType(Constants.CUSTOM_LOG_MASK_REF, MaskingFormatter.class);
+            if (formatter == null) {
+                formatter = new DefaultMaskingFormatter();
+            }
+            return formatter;
+        }
+        return null;
     }
 
     @Override

@@ -23,14 +23,16 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thoughtworks.xstream.XStream;
 
 import org.apache.camel.component.salesforce.SalesforceHttpClient;
+import org.apache.camel.component.salesforce.api.NoSuchSObjectException;
 import org.apache.camel.component.salesforce.api.SalesforceException;
 import org.apache.camel.component.salesforce.api.SalesforceMultipleChoicesException;
+import org.apache.camel.component.salesforce.api.TypeReferences;
 import org.apache.camel.component.salesforce.api.dto.RestError;
 import org.apache.camel.component.salesforce.api.utils.JsonUtils;
 import org.apache.camel.component.salesforce.internal.PayloadFormat;
@@ -58,8 +60,8 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
     private ObjectMapper objectMapper;
     private XStream xStream;
 
-    public DefaultRestClient(SalesforceHttpClient httpClient, String version, PayloadFormat format, SalesforceSession session)
-            throws SalesforceException {
+    public DefaultRestClient(final SalesforceHttpClient httpClient, final String version, final PayloadFormat format,
+        final SalesforceSession session) throws SalesforceException {
         super(version, session, httpClient);
 
         this.format = format;
@@ -100,8 +102,7 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
                 // return list of choices as error message for 300
                 if (statusCode == HttpStatus.MULTIPLE_CHOICES_300) {
                     if (PayloadFormat.JSON.equals(format)) {
-                        choices = objectMapper.readValue(responseContent, new TypeReference<List<String>>() {
-                        });
+                        choices = objectMapper.readValue(responseContent, TypeReferences.STRING_LIST_TYPE);
                     } else {
                         RestChoices restChoices = new RestChoices();
                         xStream.fromXML(responseContent, restChoices);
@@ -109,17 +110,11 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
                     }
                     return new SalesforceMultipleChoicesException(reason, statusCode, choices);
                 } else {
-                    final List<RestError> restErrors;
-                    if (PayloadFormat.JSON.equals(format)) {
-                        restErrors = objectMapper.readValue(
-                                responseContent, new TypeReference<List<RestError>>() {
-                                }
-                        );
-                    } else {
-                        RestErrors errors = new RestErrors();
-                        xStream.fromXML(responseContent, errors);
-                        restErrors = errors.getErrors();
+                    final List<RestError> restErrors = readErrorsFrom(responseContent, format, objectMapper, xStream);
+                    if (statusCode == HttpStatus.NOT_FOUND_404) {
+                        return new NoSuchSObjectException(restErrors);
                     }
+
                     return new SalesforceException(restErrors, statusCode);
                 }
             }
@@ -138,6 +133,27 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
         // just report HTTP status info
         return new SalesforceException("Unexpected error: " + reason + ", with content: " + responseContent,
                 statusCode);
+    }
+
+    @Override
+    public void approval(final InputStream request, final ResponseCallback callback) {
+        final Request post = getRequest(HttpMethod.POST, versionUrl() + "process/approvals/");
+
+        // authorization
+        setAccessToken(post);
+
+        // input stream as entity content
+        post.content(new InputStreamContentProvider(request));
+        post.header(HttpHeader.CONTENT_TYPE, PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+
+        doHttpRequest(post, new DelegatingClientCallback(callback));
+    }
+
+    @Override
+    public void approvals(final ResponseCallback callback) {
+        final Request get = getRequest(HttpMethod.GET, versionUrl() + "process/approvals/");
+
+        doHttpRequest(get, new DelegatingClientCallback(callback));
     }
 
     @Override
@@ -377,9 +393,18 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
             request = getRequest(httpMethod, apexCallUrl(apexUrl, queryParams));
             // set request SObject and content type
             if (requestDto != null) {
-                request.content(new InputStreamContentProvider(requestDto));
-                request.header(HttpHeader.CONTENT_TYPE,
-                        PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+                // guard against requests that do not support bodies
+                switch (request.getMethod()) {
+                case "PUT":
+                case "PATCH":
+                case "POST":
+                    request.content(new InputStreamContentProvider(requestDto));
+                    request.header(HttpHeader.CONTENT_TYPE,
+                            PayloadFormat.JSON.equals(format) ? APPLICATION_JSON_UTF8 : APPLICATION_XML_UTF8);
+                    break;
+                default:
+                    // ignore body for other methods
+                }
             }
 
             // requires authorization token
@@ -403,6 +428,28 @@ public class DefaultRestClient extends AbstractClientBase implements RestClient 
         }
 
         return instanceUrl + SERVICES_APEXREST + apexUrl;
+    }
+
+    @Override
+    public void recent(final Integer limit, final ResponseCallback responseCallback) {
+        final String param = Optional.ofNullable(limit).map(v -> "?limit=" + v).orElse("");
+
+        final Request get = getRequest(HttpMethod.GET, versionUrl() + "recent/" + param);
+
+        // requires authorization token
+        setAccessToken(get);
+
+        doHttpRequest(get, new DelegatingClientCallback(responseCallback));
+    }
+
+    @Override
+    public void limits(final ResponseCallback responseCallback) {
+        final Request get = getRequest(HttpMethod.GET, versionUrl() + "limits/");
+
+        // requires authorization token
+        setAccessToken(get);
+
+        doHttpRequest(get, new DelegatingClientCallback(responseCallback));
     }
 
     private String servicesDataUrl() {

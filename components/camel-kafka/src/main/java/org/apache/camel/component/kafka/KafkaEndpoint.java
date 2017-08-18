@@ -44,20 +44,23 @@ import org.slf4j.LoggerFactory;
 /**
  * The kafka component allows messages to be sent to (or consumed from) Apache Kafka brokers.
  */
-@UriEndpoint(scheme = "kafka", title = "Kafka", syntax = "kafka:brokers", consumerClass = KafkaConsumer.class, label = "messaging")
+@UriEndpoint(firstVersion = "2.13.0", scheme = "kafka", title = "Kafka", syntax = "kafka:topic", consumerClass = KafkaConsumer.class, label = "messaging")
 public class KafkaEndpoint extends DefaultEndpoint implements MultipleConsumersSupport {
     private static final Logger LOG = LoggerFactory.getLogger(KafkaEndpoint.class);
-    
+
     @UriParam
     private KafkaConfiguration configuration = new KafkaConfiguration();
-    @UriParam(label = "producer")
-    private boolean bridgeEndpoint;
 
     public KafkaEndpoint() {
     }
 
     public KafkaEndpoint(String endpointUri, KafkaComponent component) {
         super(endpointUri, component);
+    }
+
+    @Override
+    public KafkaComponent getComponent() {
+        return (KafkaComponent) super.getComponent();
     }
 
     public KafkaConfiguration getConfiguration() {
@@ -98,9 +101,10 @@ public class KafkaEndpoint extends DefaultEndpoint implements MultipleConsumersS
     private void loadParitionerClass(ClassResolver resolver, Properties props) {
         replaceWithClass(props, "partitioner.class", resolver, Partitioner.class);
     }
+
     <T> Class<T> loadClass(Object o, ClassResolver resolver, Class<T> type) {
         if (o == null || o instanceof Class) {
-            return CastUtils.cast((Class<?>)o);
+            return CastUtils.cast((Class<?>) o);
         }
         String name = o.toString();
         Class<T> c = resolver.resolveClass(name, type);
@@ -113,7 +117,7 @@ public class KafkaEndpoint extends DefaultEndpoint implements MultipleConsumersS
         return c;
     }
 
-    void replaceWithClass(Properties props, String key,  ClassResolver resolver, Class<?> type) {
+    void replaceWithClass(Properties props, String key, ClassResolver resolver, Class<?> type) {
         Class<?> c = loadClass(props.get(key), resolver, type);
         if (c != null) {
             props.put(key, c);
@@ -128,7 +132,7 @@ public class KafkaEndpoint extends DefaultEndpoint implements MultipleConsumersS
                 replaceWithClass(props, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, resolver, Serializer.class);
                 replaceWithClass(props, ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, resolver, Deserializer.class);
                 replaceWithClass(props, ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, resolver, Deserializer.class);
-                
+
                 try {
                     //doesn't exist in old version of Kafka client so detect and only call the method if
                     //the field/config actually exists
@@ -149,7 +153,7 @@ public class KafkaEndpoint extends DefaultEndpoint implements MultipleConsumersS
             LOG.debug("Problem loading classes for Serializers", t);
         }
     }
-    
+
     public ExecutorService createExecutor() {
         return getCamelContext().getExecutorServiceManager().newFixedThreadPool(this, "KafkaConsumer[" + configuration.getTopic() + "]", configuration.getConsumerStreams());
     }
@@ -179,14 +183,4 @@ public class KafkaEndpoint extends DefaultEndpoint implements MultipleConsumersS
         return new KafkaProducer(endpoint);
     }
 
-    public boolean isBridgeEndpoint() {
-        return bridgeEndpoint;
-    }
-
-    /**
-     * If the option is true, then KafkaProducer will ignore the KafkaConstants.TOPIC header setting of the inbound message.
-     */
-    public void setBridgeEndpoint(boolean bridgeEndpoint) {
-        this.bridgeEndpoint = bridgeEndpoint;
-    }
 }

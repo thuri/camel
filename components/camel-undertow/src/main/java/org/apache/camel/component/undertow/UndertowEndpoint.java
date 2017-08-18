@@ -26,10 +26,12 @@ import io.undertow.server.HttpServerExchange;
 import org.apache.camel.AsyncEndpoint;
 import org.apache.camel.Consumer;
 import org.apache.camel.Exchange;
+import org.apache.camel.ExchangePattern;
 import org.apache.camel.Message;
 import org.apache.camel.PollingConsumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
+import org.apache.camel.http.common.cookie.CookieHandler;
 import org.apache.camel.impl.DefaultEndpoint;
 import org.apache.camel.spi.HeaderFilterStrategy;
 import org.apache.camel.spi.HeaderFilterStrategyAware;
@@ -37,6 +39,7 @@ import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.jsse.SSLContextParameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +50,7 @@ import org.xnio.Options;
 /**
  * The undertow component provides HTTP-based endpoints for consuming and producing HTTP requests.
  */
-@UriEndpoint(scheme = "undertow", title = "Undertow", syntax = "undertow:httpURI",
+@UriEndpoint(firstVersion = "2.16.0", scheme = "undertow", title = "Undertow", syntax = "undertow:httpURI",
         consumerClass = UndertowConsumer.class, label = "http", lenientProperties = true)
 public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, HeaderFilterStrategyAware {
 
@@ -66,8 +69,8 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
     private SSLContextParameters sslContextParameters;
     @UriParam(label = "consumer")
     private String httpMethodRestrict;
-    @UriParam(label = "consumer", defaultValue = "true")
-    private Boolean matchOnUriPrefix = true;
+    @UriParam(label = "consumer", defaultValue = "false")
+    private Boolean matchOnUriPrefix = Boolean.FALSE;
     @UriParam(label = "producer", defaultValue = "true")
     private Boolean throwExceptionOnFailure = Boolean.TRUE;
     @UriParam(label = "producer", defaultValue = "false")
@@ -83,6 +86,8 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
     @UriParam(label = "consumer",
             description = "Specifies whether to enable HTTP OPTIONS for this Servlet consumer. By default OPTIONS is turned off.")
     private boolean optionsEnabled;
+    @UriParam(label = "producer")
+    private CookieHandler cookieHandler;
 
     public UndertowEndpoint(String uri, UndertowComponent component) throws URISyntaxException {
         super(uri, component);
@@ -122,7 +127,7 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
     }
 
     public Exchange createExchange(HttpServerExchange httpExchange) throws Exception {
-        Exchange exchange = createExchange();
+        Exchange exchange = createExchange(ExchangePattern.InOut);
 
         Message in = getUndertowHttpBinding().toCamelMessage(httpExchange, exchange);
 
@@ -145,7 +150,16 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
      * The url of the HTTP endpoint to use.
      */
     public void setHttpURI(URI httpURI) {
-        this.httpURI = httpURI;
+        if (ObjectHelper.isEmpty(httpURI.getPath())) {
+            try {
+                this.httpURI = new URI(httpURI.getScheme(), httpURI.getUserInfo(), httpURI.getHost(), httpURI.getPort(),
+                    "/", httpURI.getQuery(), httpURI.getFragment());
+            } catch (URISyntaxException e) {
+                throw new IllegalArgumentException(e);
+            }
+        } else {
+            this.httpURI = httpURI;
+        }
     }
 
     public String getHttpMethodRestrict() {
@@ -197,8 +211,8 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
     }
 
     /**
-     * If the option is true, HttpProducer will ignore the Exchange.HTTP_URI header, and use the endpoint's URI for request.
-     * You may also set the option throwExceptionOnFailure to be false to let the producer send all the fault response back.
+     * Option to disable throwing the HttpOperationFailedException in case of failed responses from the remote server.
+     * This allows you to get all responses regardless of the HTTP status code.
      */
     public void setThrowExceptionOnFailure(Boolean throwExceptionOnFailure) {
         this.throwExceptionOnFailure = throwExceptionOnFailure;
@@ -289,6 +303,17 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
         this.optionsEnabled = optionsEnabled;
     }
 
+    public CookieHandler getCookieHandler() {
+        return cookieHandler;
+    }
+
+    /**
+     * Configure a cookie handler to maintain a HTTP session
+     */
+    public void setCookieHandler(CookieHandler cookieHandler) {
+        this.cookieHandler = cookieHandler;
+    }
+
     @Override
     protected void doStart() throws Exception {
         super.doStart();
@@ -343,7 +368,7 @@ public class UndertowEndpoint extends DefaultEndpoint implements AsyncEndpoint, 
         if (reuseAddresses != null && !optionMap.contains(Options.REUSE_ADDRESSES)) {
             // rebuild map
             OptionMap.Builder builder = OptionMap.builder();
-            builder.addAll(optionMap).set(Options.REUSE_ADDRESSES, tcpNoDelay);
+            builder.addAll(optionMap).set(Options.REUSE_ADDRESSES, reuseAddresses);
             optionMap = builder.getMap();
         }
     }

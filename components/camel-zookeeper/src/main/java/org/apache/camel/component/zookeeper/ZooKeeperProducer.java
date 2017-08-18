@@ -64,6 +64,9 @@ public class ZooKeeperProducer extends DefaultProducer {
 
     public void process(Exchange exchange) throws Exception {
 
+        if (connection == null) {
+            connection = this.zkm.getConnection();
+        }
         ProductionContext context = new ProductionContext(connection, exchange);
 
         String operation = exchange.getIn().getHeader(ZooKeeperMessage.ZOOKEEPER_OPERATION, String.class);
@@ -134,7 +137,7 @@ public class ZooKeeperProducer extends DefaultProducer {
     }
 
     private void updateExchangeWithResult(ProductionContext context, OperationResult result) {
-        ZooKeeperMessage out = new ZooKeeperMessage(context.node, result.getStatistics(), context.in.getHeaders());
+        ZooKeeperMessage out = new ZooKeeperMessage(getEndpoint().getCamelContext(), context.node, result.getStatistics(), context.in.getHeaders());
         if (result.isOk()) {
             out.setBody(result.getResult());
         } else {

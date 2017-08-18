@@ -83,7 +83,7 @@ public class DefaultCamelContextTest extends TestSupport {
         ctx.disableJMX();
         UuidGenerator uuidGenerator = ctx.getUuidGenerator();
         assertNotNull(uuidGenerator);
-        assertEquals(uuidGenerator.getClass(), ActiveMQUuidGenerator.class);
+        assertEquals(uuidGenerator.getClass(), DefaultUuidGenerator.class);
     }
 
     public void testGetComponents() throws Exception {
@@ -111,6 +111,13 @@ public class DefaultCamelContextTest extends TestSupport {
         }
     }
     
+    public void testGetEndpointNoScheme() throws Exception {
+        DefaultCamelContext ctx = new DefaultCamelContext();
+        ctx.disableJMX();
+        Endpoint endpoint = ctx.getEndpoint("log");
+        assertNotNull(endpoint);
+    }
+
     public void testGetEndPointByTypeUnknown() {
         DefaultCamelContext camelContext = new DefaultCamelContext();
         try {
@@ -126,6 +133,7 @@ public class DefaultCamelContextTest extends TestSupport {
         ctx.disableJMX();
         ctx.getEndpoint("log:foo");
         ctx.getEndpoint("log:bar");
+        ctx.start();
 
         Collection<Endpoint> list = ctx.removeEndpoints("log:foo");
         assertEquals(1, list.size());
@@ -159,11 +167,11 @@ public class DefaultCamelContextTest extends TestSupport {
         }
     }
 
-    public void testGetEndpointNoScheme() throws Exception {
+    public void testGetEndpointUnknownComponentNoScheme() throws Exception {
         DefaultCamelContext ctx = new DefaultCamelContext();
         ctx.disableJMX();
         try {
-            CamelContextHelper.getMandatoryEndpoint(ctx, "log.foo");
+            CamelContextHelper.getMandatoryEndpoint(ctx, "unknownname");
             fail("Should have thrown a NoSuchEndpointException");
         } catch (NoSuchEndpointException e) {
             // expected

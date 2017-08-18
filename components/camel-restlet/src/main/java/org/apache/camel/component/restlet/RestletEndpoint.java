@@ -27,6 +27,7 @@ import org.apache.camel.ExchangePattern;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
+import org.apache.camel.http.common.cookie.CookieHandler;
 import org.apache.camel.impl.DefaultEndpoint;
 import org.apache.camel.spi.HeaderFilterStrategy;
 import org.apache.camel.spi.HeaderFilterStrategyAware;
@@ -41,7 +42,7 @@ import org.restlet.data.Method;
 /**
  * Component for consuming and producing Restful resources using Restlet.
  */
-@UriEndpoint(scheme = "restlet", title = "Restlet", syntax = "restlet:protocol:host:port/uriPattern",
+@UriEndpoint(firstVersion = "2.0.0", scheme = "restlet", title = "Restlet", syntax = "restlet:protocol:host:port/uriPattern",
         consumerClass = RestletConsumer.class, label = "rest", lenientProperties = true)
 public class RestletEndpoint extends DefaultEndpoint implements AsyncEndpoint, HeaderFilterStrategyAware {
     private static final int DEFAULT_PORT = 80;
@@ -76,7 +77,7 @@ public class RestletEndpoint extends DefaultEndpoint implements AsyncEndpoint, H
     private RestletBinding restletBinding;
     @UriParam(label = "producer", defaultValue = "true")
     private boolean throwExceptionOnFailure = true;
-    @UriParam(label = "advanced")
+    @UriParam(label = "consumer,advanced")
     private boolean disableStreamCache;
     @UriParam(label = "security")
     private SSLContextParameters sslContextParameters;
@@ -84,9 +85,17 @@ public class RestletEndpoint extends DefaultEndpoint implements AsyncEndpoint, H
     private boolean streamRepresentation;
     @UriParam(label = "producer,advanced")
     private boolean autoCloseStream;
+    @UriParam(label = "producer")
+    private CookieHandler cookieHandler;
+    // should NOT be exposes as @UriParam
+    private transient Map<String, Object> queryParameters;
 
     public RestletEndpoint(RestletComponent component, String remaining) throws Exception {
         super(remaining, component);
+    }
+
+    public void setCompleteEndpointUri(String uri) {
+        setEndpointUri(uri);
     }
 
     public boolean isSingleton() {
@@ -343,23 +352,26 @@ public class RestletEndpoint extends DefaultEndpoint implements AsyncEndpoint, H
         this.autoCloseStream = autoCloseStream;
     }
 
-    // Update the endpointUri with the restlet method information
-    protected void updateEndpointUri() {
-        String endpointUri = getEndpointUri();
-        CollectionStringBuffer methods = new CollectionStringBuffer(",");
-        if (getRestletMethods() != null && getRestletMethods().length > 0) {
-            // list the method(s) as a comma seperated list
-            for (Method method : getRestletMethods()) {
-                methods.append(method.getName());
-            }
-        } else {
-            // otherwise consider the single method we own
-            methods.append(getRestletMethod());
-        }
+    public CookieHandler getCookieHandler() {
+        return cookieHandler;
+    }
 
-        // update the uri
-        endpointUri = endpointUri + "?restletMethods=" + methods;
-        setEndpointUri(endpointUri);
+    /**
+     * Configure a cookie handler to maintain a HTTP session
+     */
+    public void setCookieHandler(CookieHandler cookieHandler) {
+        this.cookieHandler = cookieHandler;
+    }
+
+    public Map<String, Object> getQueryParameters() {
+        return queryParameters;
+    }
+
+    /**
+     * Additional query parameters for producer
+     */
+    public void setQueryParameters(Map<String, Object> queryParameters) {
+        this.queryParameters = queryParameters;
     }
 
     @Override

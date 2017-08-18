@@ -45,6 +45,8 @@ import org.apache.camel.core.xml.CamelServiceExporterDefinition;
 import org.apache.camel.core.xml.CamelStreamCachingStrategyDefinition;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.camel.model.ContextScanDefinition;
+import org.apache.camel.model.GlobalOptionsDefinition;
+import org.apache.camel.model.HystrixConfigurationDefinition;
 import org.apache.camel.model.InterceptDefinition;
 import org.apache.camel.model.InterceptFromDefinition;
 import org.apache.camel.model.InterceptSendToEndpointDefinition;
@@ -57,9 +59,12 @@ import org.apache.camel.model.RouteBuilderDefinition;
 import org.apache.camel.model.RouteContextRefDefinition;
 import org.apache.camel.model.RouteDefinition;
 import org.apache.camel.model.ThreadPoolProfileDefinition;
+import org.apache.camel.model.cloud.ServiceCallConfigurationDefinition;
 import org.apache.camel.model.dataformat.DataFormatsDefinition;
 import org.apache.camel.model.rest.RestConfigurationDefinition;
 import org.apache.camel.model.rest.RestDefinition;
+import org.apache.camel.model.transformer.TransformersDefinition;
+import org.apache.camel.model.validator.ValidatorsDefinition;
 import org.apache.camel.spi.PackageScanFilter;
 
 @XmlRootElement(name = "camelContext")
@@ -74,6 +79,9 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
 
     @XmlAttribute
     private String messageHistory;
+
+    @XmlAttribute
+    private String logMask;
 
     @XmlAttribute
     private String logExhaustedMessageBody;
@@ -98,6 +106,9 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
 
     @XmlAttribute
     private String useMDCLogging;
+
+    @XmlAttribute
+    private String useDataType;
 
     @XmlAttribute
     private String useBreadcrumb;
@@ -125,6 +136,9 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
     private Boolean lazyLoadTypeConverters;
 
     @XmlAttribute
+    private Boolean loadTypeConverters;
+
+    @XmlAttribute
     private Boolean typeConverterStatisticsEnabled;
 
     @XmlAttribute
@@ -135,6 +149,9 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
 
     @XmlElement(name = "properties")
     private PropertiesDefinition properties;
+
+    @XmlElement(name = "globalOptions")
+    private GlobalOptionsDefinition globalOptions;
 
     @XmlElement(name = "propertyPlaceholder", type = CamelPropertyPlaceholderDefinition.class)
     private CamelPropertyPlaceholderDefinition camelPropertyPlaceholder;
@@ -158,9 +175,24 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
         @XmlElement(name = "consumerTemplate", type = ConsumerTemplateFactoryBean.class),
         @XmlElement(name = "redeliveryPolicyProfile", type = RedeliveryPolicyFactoryBean.class),
         @XmlElement(name = "template", type = ProducerTemplateFactoryBean.class),
-        @XmlElement(name = "threadPool", type = ThreadPoolFactoryBean.class)
+        @XmlElement(name = "threadPool", type = ThreadPoolFactoryBean.class),
     })
-    private List<AbstractCamelFactoryBean<?>> beans;
+    private List<AbstractCamelFactoryBean<?>> beansFactory;
+
+    @XmlTransient
+    private List<?> beans;
+
+    @XmlElement(name = "defaultServiceCallConfiguration")
+    private ServiceCallConfigurationDefinition defaultServiceCallConfiguration;
+
+    @XmlElement(name = "serviceCallConfiguration", type = ServiceCallConfigurationDefinition.class)
+    private List<ServiceCallConfigurationDefinition> serviceCallConfigurations;
+
+    @XmlElement(name = "defaultHystrixConfiguration")
+    private HystrixConfigurationDefinition defaultHystrixConfiguration;
+
+    @XmlElement(name = "hystrixConfiguration", type = HystrixConfigurationDefinition.class)
+    private List<HystrixConfigurationDefinition> hystrixConfigurations;
 
     @XmlElement(name = "errorHandler", type = ErrorHandlerDefinition.class)
     private List<ErrorHandlerDefinition> errorHandlers;
@@ -188,6 +220,12 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
 
     @XmlElement(name = "dataFormats")
     private DataFormatsDefinition dataFormats;
+
+    @XmlElement(name = "transformers")
+    private TransformersDefinition transformers;
+
+    @XmlElement(name = "validators")
+    private ValidatorsDefinition validators;
 
     @XmlElement(name = "redeliveryPolicyProfile")
     private List<RedeliveryPolicyFactoryBean> redeliveryPolicies;
@@ -299,12 +337,58 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
         return context;
     }
 
-    public List<AbstractCamelFactoryBean<?>> getBeans() {
+    @Override
+    public List<AbstractCamelFactoryBean<?>> getBeansFactory() {
+        return beansFactory;
+    }
+
+    public void setBeansFactory(List<AbstractCamelFactoryBean<?>> beansFactory) {
+        this.beansFactory = beansFactory;
+    }
+
+    @Override
+    public List<?> getBeans() {
         return beans;
     }
 
-    public void setBeans(List<AbstractCamelFactoryBean<?>> beans) {
+    public void setBeans(List<?> beans) {
         this.beans = beans;
+    }
+
+    @Override
+    public ServiceCallConfigurationDefinition getDefaultServiceCallConfiguration() {
+        return defaultServiceCallConfiguration;
+    }
+
+    public void setDefaultServiceCallConfiguration(ServiceCallConfigurationDefinition defaultServiceCallConfiguration) {
+        this.defaultServiceCallConfiguration = defaultServiceCallConfiguration;
+    }
+
+    @Override
+    public List<ServiceCallConfigurationDefinition> getServiceCallConfigurations() {
+        return serviceCallConfigurations;
+    }
+
+    public void setServiceCallConfigurations(List<ServiceCallConfigurationDefinition> serviceCallConfigurations) {
+        this.serviceCallConfigurations = serviceCallConfigurations;
+    }
+
+    @Override
+    public HystrixConfigurationDefinition getDefaultHystrixConfiguration() {
+        return defaultHystrixConfiguration;
+    }
+
+    public void setDefaultHystrixConfiguration(HystrixConfigurationDefinition defaultHystrixConfiguration) {
+        this.defaultHystrixConfiguration = defaultHystrixConfiguration;
+    }
+
+    @Override
+    public List<HystrixConfigurationDefinition> getHystrixConfigurations() {
+        return hystrixConfigurations;
+    }
+
+    public void setHystrixConfigurations(List<HystrixConfigurationDefinition> hystrixConfigurations) {
+        this.hystrixConfigurations = hystrixConfigurations;
     }
 
     public List<RouteDefinition> getRoutes() {
@@ -377,6 +461,14 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
 
     public void setProperties(PropertiesDefinition properties) {
         this.properties = properties;
+    }
+
+    public GlobalOptionsDefinition getGlobalOptions() {
+        return globalOptions;
+    }
+
+    public void setGlobalOptions(GlobalOptionsDefinition globalOptions) {
+        this.globalOptions = globalOptions;
     }
 
     public String[] getPackages() {
@@ -460,6 +552,14 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
         this.messageHistory = messageHistory;
     }
 
+    public String getLogMask() {
+        return logMask;
+    }
+
+    public void setLogMask(String logMask) {
+        this.logMask = logMask;
+    }
+
     @Override
     public String getLogExhaustedMessageBody() {
         return logExhaustedMessageBody;
@@ -517,6 +617,14 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
         this.useMDCLogging = useMDCLogging;
     }
 
+    public String getUseDataType() {
+        return useDataType;
+    }
+
+    public void setUseDataType(String useDataType) {
+        this.useDataType = useDataType;
+    }
+
     public String getUseBreadcrumb() {
         return useBreadcrumb;
     }
@@ -565,6 +673,15 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
     @Deprecated
     public void setLazyLoadTypeConverters(Boolean lazyLoadTypeConverters) {
         this.lazyLoadTypeConverters = lazyLoadTypeConverters;
+    }
+
+    @Override
+    public Boolean getLoadTypeConverters() {
+        return loadTypeConverters;
+    }
+
+    public void setLoadTypeConverters(Boolean loadTypeConverters) {
+        this.loadTypeConverters = loadTypeConverters;
     }
 
     public Boolean getTypeConverterStatisticsEnabled() {
@@ -637,6 +754,22 @@ public class CamelContextFactoryBean extends AbstractCamelContextFactoryBean<Def
 
     public void setDataFormats(DataFormatsDefinition dataFormats) {
         this.dataFormats = dataFormats;
+    }
+
+    public TransformersDefinition getTransformers() {
+        return transformers;
+    }
+
+    public void setTransformers(TransformersDefinition transformers) {
+        this.transformers = transformers;
+    }
+
+    public ValidatorsDefinition getValidators() {
+        return validators;
+    }
+
+    public void setValidators(ValidatorsDefinition validators) {
+        this.validators = validators;
     }
 
     public List<OnExceptionDefinition> getOnExceptions() {

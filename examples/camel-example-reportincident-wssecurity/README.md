@@ -26,7 +26,7 @@ Remarks:
 
 ### Run
 
-To run the example on Apache ServiceMix 4.x or Apache Karaf 2.x
+To run the example on Apache Karaf 4.x
 
 #### Step 1: launch the server
 
@@ -47,16 +47,16 @@ To run the example on Apache ServiceMix 4.x or Apache Karaf 2.x
 	feature:install camel-cxf
 	feature:install camel-mail
 	feature:install camel-velocity
-        feature:install cxf-bindings-corba
-        feature:install cxf-transports-jms
-        feature:install cxf-ws-security
+  feature:install cxf-bindings-corba
+  feature:install cxf-transports-jms
+  feature:install cxf-ws-security
 
   remark: As the camel route sends email to a SMTP server, you must configure a user/password in your favorite
           SMTP Server (James by example). User = someone and password = secret
 
 #### Step 3: Deploy our example
 
-	install -s mvn:org.apache.camel/camel-example-reportincident-wssecurity/${project.version}
+	install -s mvn:org.apache.camel.example/camel-example-reportincident-wssecurity/${project.version}
 
 #### Step 4: Verify that your service is available using in the browser the following url
 
@@ -120,11 +120,6 @@ To run the example on Apache ServiceMix 4.x or Apache Karaf 2.x
 
 #### Step 6: Check email
  Check through a POP request that a message has been published in the mailbox of someone (email address : incident@mycompany.com)
-
-### Documentation
-
-This example is documented at
-  <http://camel.apache.org/tutorial-osgi-camel-part1.html>
 
 ### Forum, Help, etc
 

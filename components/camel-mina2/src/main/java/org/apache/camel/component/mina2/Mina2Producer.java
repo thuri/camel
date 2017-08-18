@@ -16,6 +16,7 @@
  */
 package org.apache.camel.component.mina2;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.charset.Charset;
@@ -70,6 +71,7 @@ public class Mina2Producer extends DefaultProducer implements ServicePoolAware {
     private CountDownLatch responseLatch;
     private CountDownLatch closeLatch;
     private boolean lazySessionCreation;
+    private long writeTimeout;
     private long timeout;
     private SocketAddress address;
     private IoConnector connector;
@@ -83,6 +85,7 @@ public class Mina2Producer extends DefaultProducer implements ServicePoolAware {
         super(endpoint);
         this.configuration = endpoint.getConfiguration();
         this.lazySessionCreation = configuration.isLazySessionCreation();
+        this.writeTimeout = configuration.getWriteTimeout();
         this.timeout = configuration.getTimeout();
         this.sync = configuration.isSync();
         this.noReplyLogger = new CamelLogger(LOG, configuration.getNoReplyLogLevel());
@@ -111,6 +114,7 @@ public class Mina2Producer extends DefaultProducer implements ServicePoolAware {
         return false;
     }
 
+    @Override
     public void process(Exchange exchange) throws Exception {
         try {
             doProcess(exchange);
@@ -163,7 +167,7 @@ public class Mina2Producer extends DefaultProducer implements ServicePoolAware {
             LOG.debug("Writing body: {}", out);
         }
         // write the body
-        Mina2Helper.writeBody(session, body, exchange);
+        Mina2Helper.writeBody(session, body, exchange, writeTimeout);
 
         if (sync) {
             // wait for response, consider timeout
@@ -511,13 +515,14 @@ public class Mina2Producer extends DefaultProducer implements ServicePoolAware {
             this.message = null;
             this.messageReceived = false;
             this.cause = cause;
-            if (ioSession != null) {
-                try {
-                    closeSessionIfNeededAndAwaitCloseInHandler(ioSession);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+            if (ioSession != null && !closedByMina(cause)) {
+                CloseFuture closeFuture = ioSession.closeNow();
+                closeFuture.awaitUninterruptibly(timeout, TimeUnit.MILLISECONDS);
             }
+        }
+
+        private boolean closedByMina(Throwable cause) {
+            return cause instanceof IOException;
         }
 
         public Throwable getCause() {

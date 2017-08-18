@@ -27,7 +27,6 @@ import org.apache.camel.CamelContextAware;
 import org.apache.camel.Consumer;
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
-import org.apache.camel.NonManagedService;
 import org.apache.camel.Route;
 import org.apache.camel.management.event.ExchangeCompletedEvent;
 import org.apache.camel.support.EventNotifierSupport;
@@ -50,7 +49,7 @@ import org.slf4j.LoggerFactory;
  *
  * @version 
  */
-public class ThrottlingInflightRoutePolicy extends RoutePolicySupport implements CamelContextAware, NonManagedService {
+public class ThrottlingInflightRoutePolicy extends RoutePolicySupport implements CamelContextAware {
 
     public enum ThrottlingScope {
         Context, Route
@@ -239,14 +238,14 @@ public class ThrottlingInflightRoutePolicy extends RoutePolicySupport implements
     }
 
     private void startConsumer(int size, Consumer consumer) throws Exception {
-        boolean started = super.startConsumer(consumer);
+        boolean started = resumeOrStartConsumer(consumer);
         if (started) {
             getLogger().log("Throttling consumer: " + size + " <= " + resumeInflightExchanges + " inflight exchange by resuming consumer: " + consumer);
         }
     }
 
     private void stopConsumer(int size, Consumer consumer) throws Exception {
-        boolean stopped = super.stopConsumer(consumer);
+        boolean stopped = suspendOrStopConsumer(consumer);
         if (stopped) {
             getLogger().log("Throttling consumer: " + size + " > " + maxInflightExchanges + " inflight exchange by suspending consumer: " + consumer);
         }

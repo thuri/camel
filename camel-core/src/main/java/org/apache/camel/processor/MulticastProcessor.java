@@ -152,6 +152,7 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
     private final boolean parallelProcessing;
     private final boolean streaming;
     private final boolean parallelAggregate;
+    private final boolean stopOnAggregateException;
     private final boolean stopOnException;
     private final ExecutorService executorService;
     private final boolean shutdownExecutorService;
@@ -176,10 +177,17 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
                 streaming, stopOnException, timeout, onPrepare, shareUnitOfWork, false);
     }
 
+    public MulticastProcessor(CamelContext camelContext, Collection<Processor> processors, AggregationStrategy aggregationStrategy, boolean parallelProcessing,
+                              ExecutorService executorService, boolean shutdownExecutorService, boolean streaming, boolean stopOnException, long timeout, Processor onPrepare,
+                              boolean shareUnitOfWork, boolean parallelAggregate) {
+        this(camelContext, processors, aggregationStrategy, parallelProcessing, executorService, shutdownExecutorService, streaming, stopOnException, timeout, onPrepare,
+             shareUnitOfWork, false, false);
+    }
+    
     public MulticastProcessor(CamelContext camelContext, Collection<Processor> processors, AggregationStrategy aggregationStrategy,
                               boolean parallelProcessing, ExecutorService executorService, boolean shutdownExecutorService, boolean streaming,
                               boolean stopOnException, long timeout, Processor onPrepare, boolean shareUnitOfWork,
-                              boolean parallelAggregate) {
+                              boolean parallelAggregate, boolean stopOnAggregateException) {
         notNull(camelContext, "camelContext");
         this.camelContext = camelContext;
         this.processors = processors;
@@ -194,6 +202,7 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
         this.onPrepare = onPrepare;
         this.shareUnitOfWork = shareUnitOfWork;
         this.parallelAggregate = parallelAggregate;
+        this.stopOnAggregateException = stopOnAggregateException;
     }
 
     @Override
@@ -304,10 +313,9 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
 
                 completion.submit(new Callable<Exchange>() {
                     public Exchange call() throws Exception {
-                        // only start the aggregation task when the task is being executed to avoid staring
-                        // the aggregation task to early and pile up too many threads
+                        // start the aggregation task at this stage only in order not to pile up too many threads
                         if (aggregationTaskSubmitted.compareAndSet(false, true)) {
-                            // but only submit the task once
+                            // but only submit the aggregation task once
                             aggregateExecutorService.submit(aggregateOnTheFlyTask);
                         }
 
@@ -531,8 +539,14 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
                     doAggregate(getAggregationStrategy(subExchange), result, subExchange);
                 }
             } catch (Throwable e) {
-                // wrap in exception to explain where it failed
-                subExchange.setException(new CamelExchangeException("Parallel processing failed for number " + aggregated.get(), subExchange, e));
+                if (isStopOnAggregateException()) {
+                    throw e;
+                } else {
+                    // wrap in exception to explain where it failed
+                    CamelExchangeException cex = new CamelExchangeException("Parallel processing failed for number " + aggregated.get(), subExchange, e);
+                    subExchange.setException(cex);
+                    LOG.debug(cex.getMessage(), cex);
+                }
             } finally {
                 aggregated.incrementAndGet();
             }
@@ -663,18 +677,23 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
 
         TracedRouteNodes traced = exchange.getUnitOfWork() != null ? exchange.getUnitOfWork().getTracedRouteNodes() : null;
 
-        // compute time taken if sending to another endpoint
-        final StopWatch watch = producer != null ? new StopWatch() : null;
-
         try {
             // prepare tracing starting from a new block
             if (traced != null) {
                 traced.pushBlock();
             }
 
+            StopWatch sw = null;
             if (producer != null) {
-                EventHelper.notifyExchangeSending(exchange.getContext(), exchange, producer.getEndpoint());
+                boolean sending = EventHelper.notifyExchangeSending(exchange.getContext(), exchange, producer.getEndpoint());
+                if (sending) {
+                    sw = new StopWatch();
+                }
             }
+
+            // compute time taken if sending to another endpoint
+            final StopWatch watch = sw;
+
             // let the prepared process it, remember to begin the exchange pair
             AsyncProcessor async = AsyncProcessorConverterHelper.convert(processor);
             pair.begin();
@@ -684,8 +703,8 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
                     pair.done();
 
                     // okay we are done, so notify the exchange was sent
-                    if (producer != null) {
-                        long timeTaken = watch.stop();
+                    if (producer != null && watch != null) {
+                        long timeTaken = watch.taken();
                         Endpoint endpoint = producer.getEndpoint();
                         // emit event that the exchange was sent to the endpoint
                         EventHelper.notifyExchangeSent(exchange.getContext(), exchange, endpoint, timeTaken);
@@ -807,10 +826,6 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
 
         // compute time taken if sending to another endpoint
         StopWatch watch = null;
-        if (producer != null) {
-            watch = new StopWatch();
-        }
-
         try {
             // prepare tracing starting from a new block
             if (traced != null) {
@@ -818,7 +833,10 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
             }
 
             if (producer != null) {
-                EventHelper.notifyExchangeSending(exchange.getContext(), exchange, producer.getEndpoint());
+                boolean sending = EventHelper.notifyExchangeSending(exchange.getContext(), exchange, producer.getEndpoint());
+                if (sending) {
+                    watch = new StopWatch();
+                }
             }
             // let the prepared process it, remember to begin the exchange pair
             AsyncProcessor async = AsyncProcessorConverterHelper.convert(processor);
@@ -831,9 +849,9 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
             if (traced != null) {
                 traced.popBlock();
             }
-            if (producer != null) {
-                long timeTaken = watch.stop();
+            if (producer != null && watch != null) {
                 Endpoint endpoint = producer.getEndpoint();
+                long timeTaken = watch.taken();
                 // emit event that the exchange was sent to the endpoint
                 // this is okay to do here in the finally block, as the processing is not using the async routing engine
                 //( we invoke it synchronously as parallel async routing is too hard)
@@ -1291,6 +1309,10 @@ public class MulticastProcessor extends ServiceSupport implements AsyncProcessor
 
     public boolean isParallelAggregate() {
         return parallelAggregate;
+    }
+
+    public boolean isStopOnAggregateException() {
+        return stopOnAggregateException;
     }
 
     public boolean isShareUnitOfWork() {

@@ -21,7 +21,6 @@ import java.io.StringWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Iterator;
@@ -48,6 +47,7 @@ import org.apache.camel.NoSuchEndpointException;
 import org.apache.camel.NoSuchLanguageException;
 import org.apache.camel.NoTypeConversionAvailableException;
 import org.apache.camel.Producer;
+import org.apache.camel.RuntimeExchangeException;
 import org.apache.camel.component.bean.BeanInvocation;
 import org.apache.camel.component.properties.PropertiesComponent;
 import org.apache.camel.language.bean.BeanLanguage;
@@ -71,13 +71,13 @@ import org.apache.camel.util.IOHelper;
 import org.apache.camel.util.MessageHelper;
 import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.OgnlHelper;
+import org.apache.camel.util.SkipIterator;
 import org.apache.camel.util.StringHelper;
-
 
 /**
  * A helper class for working with <a href="http://camel.apache.org/expression.html">expressions</a>.
  *
- * @version 
+ * @version
  */
 public final class ExpressionBuilder {
 
@@ -88,7 +88,7 @@ public final class ExpressionBuilder {
      */
     private ExpressionBuilder() {
     }
-    
+
     /**
      * Returns an expression for the inbound message attachments
      *
@@ -359,8 +359,8 @@ public final class ExpressionBuilder {
                 return "exchangePattern";
             }
         };
-    }   
-    
+    }
+
     /**
      * Returns an expression for an exception set on the exchange
      *
@@ -410,7 +410,7 @@ public final class ExpressionBuilder {
             }
         };
     }
-    
+
     /**
      * Returns the expression for the exchanges exception invoking methods defined
      * in a simple OGNL notation
@@ -424,7 +424,7 @@ public final class ExpressionBuilder {
                 if (exception == null) {
                     exception = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Exception.class);
                 }
-                
+
                 if (exception == null) {
                     return null;
                 }
@@ -606,7 +606,7 @@ public final class ExpressionBuilder {
             }
         };
     }
-    
+
     /**
      * Returns an expression for the property value of exchange with the given name
      *
@@ -647,8 +647,19 @@ public final class ExpressionBuilder {
      * Returns an expression for the properties of exchange
      *
      * @return an expression object which will return the properties
+     * @deprecated use {@link #exchangeExceptionExpression()} instead
      */
+    @Deprecated
     public static Expression propertiesExpression() {
+        return exchangeExceptionExpression();
+    }
+
+    /**
+     * Returns an expression for the exchange properties of exchange
+     *
+     * @return an expression object which will return the exchange properties
+     */
+    public static Expression exchangePropertiesExpression() {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
                 return exchange.getProperties();
@@ -656,11 +667,11 @@ public final class ExpressionBuilder {
 
             @Override
             public String toString() {
-                return "properties";
+                return "exchangeProperties";
             }
         };
     }
-    
+
     /**
      * Returns an expression for the properties of the camel context
      *
@@ -669,7 +680,7 @@ public final class ExpressionBuilder {
     public static Expression camelContextPropertiesExpression() {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
-                return exchange.getContext().getProperties();
+                return exchange.getContext().getGlobalOptions();
             }
 
             @Override
@@ -678,7 +689,7 @@ public final class ExpressionBuilder {
             }
         };
     }
-    
+
     /**
      * Returns an expression for the property value of the camel context with the given name
      *
@@ -689,7 +700,7 @@ public final class ExpressionBuilder {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
                 String text = simpleExpression(propertyName).evaluate(exchange, String.class);
-                return exchange.getContext().getProperty(text);
+                return exchange.getContext().getGlobalOption(text);
             }
 
             @Override
@@ -951,7 +962,7 @@ public final class ExpressionBuilder {
 
             @Override
             public String toString() {
-                return "bodyExpression (" + bodyType +  ")";
+                return "bodyExpression (" + bodyType + ")";
             }
         };
     }
@@ -970,7 +981,7 @@ public final class ExpressionBuilder {
 
             @Override
             public String toString() {
-                return "bodyExpression (" + bodyType +  ")";
+                return "bodyExpression (" + bodyType + ")";
             }
         };
     }
@@ -1602,7 +1613,7 @@ public final class ExpressionBuilder {
         ObjectHelper.notEmpty(path, "path");
         return new XMLTokenExpressionIterator(path, mode);
     }
-    
+
     public static Expression tokenizeXMLAwareExpression(String path, char mode, int group) {
         ObjectHelper.notEmpty(path, "path");
         return new XMLTokenExpressionIterator(path, mode, group);
@@ -1630,14 +1641,21 @@ public final class ExpressionBuilder {
         };
     }
 
-    public static Expression groupXmlIteratorExpression(final Expression expression, final int group) {
+    public static Expression groupXmlIteratorExpression(final Expression expression, final String group) {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
                 // evaluate expression as iterator
                 Iterator<?> it = expression.evaluate(exchange, Iterator.class);
                 ObjectHelper.notNull(it, "expression: " + expression + " evaluated on " + exchange + " must return an java.util.Iterator");
                 // must use GroupTokenIterator in xml mode as we want to concat the xml parts into a single message
-                return new GroupTokenIterator(exchange, it, null, group, false);
+                // the group can be a simple expression so evaluate it as a number
+                Integer parts = exchange.getContext().resolveLanguage("simple").createExpression(group).evaluate(exchange, Integer.class);
+                if (parts == null) {
+                    throw new RuntimeExchangeException("Group evaluated as null, must be evaluated as a positive Integer value from expression: " + group, exchange);
+                } else if (parts <= 0) {
+                    throw new RuntimeExchangeException("Group must be a positive number, was: " + parts, exchange);
+                }
+                return new GroupTokenIterator(exchange, it, null, parts, false);
             }
 
             @Override
@@ -1647,22 +1665,45 @@ public final class ExpressionBuilder {
         };
     }
 
-    public static Expression groupIteratorExpression(final Expression expression, final String token, final int group, final boolean skipFirst) {
+    public static Expression groupIteratorExpression(final Expression expression, final String token, final String group, final boolean skipFirst) {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
                 // evaluate expression as iterator
                 Iterator<?> it = expression.evaluate(exchange, Iterator.class);
                 ObjectHelper.notNull(it, "expression: " + expression + " evaluated on " + exchange + " must return an java.util.Iterator");
+                // the group can be a simple expression so evaluate it as a number
+                Integer parts = exchange.getContext().resolveLanguage("simple").createExpression(group).evaluate(exchange, Integer.class);
+                if (parts == null) {
+                    throw new RuntimeExchangeException("Group evaluated as null, must be evaluated as a positive Integer value from expression: " + group, exchange);
+                } else if (parts <= 0) {
+                    throw new RuntimeExchangeException("Group must be a positive number, was: " + parts, exchange);
+                }
                 if (token != null) {
-                    return new GroupTokenIterator(exchange, it, token, group, skipFirst);
+                    return new GroupTokenIterator(exchange, it, token, parts, skipFirst);
                 } else {
-                    return new GroupIterator(exchange, it, group, skipFirst);
+                    return new GroupIterator(exchange, it, parts, skipFirst);
                 }
             }
 
             @Override
             public String toString() {
                 return "group " + expression + " " + group + " times";
+            }
+        };
+    }
+
+    public static Expression skipIteratorExpression(final Expression expression, final int skip) {
+        return new ExpressionAdapter() {
+            public Object evaluate(Exchange exchange) {
+                // evaluate expression as iterator
+                Iterator<?> it = expression.evaluate(exchange, Iterator.class);
+                ObjectHelper.notNull(it, "expression: " + expression + " evaluated on " + exchange + " must return an java.util.Iterator");
+                return new SkipIterator(exchange, it, skip);
+            }
+
+            @Override
+            public String toString() {
+                return "skip " + expression + " " + skip + " times";
             }
         };
     }
@@ -1677,7 +1718,7 @@ public final class ExpressionBuilder {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
                 List<?> list = expression.evaluate(exchange, List.class);
-                Collections.sort(list, comparator);
+                list.sort(comparator);
                 return list;
             }
 
@@ -1967,7 +2008,7 @@ public final class ExpressionBuilder {
             }
         };
     }
-   
+
     public static Expression beanExpression(final String expression) {
         return new ExpressionAdapter() {
             public Object evaluate(Exchange exchange) {
@@ -1986,13 +2027,13 @@ public final class ExpressionBuilder {
             }
         };
     }
-    
+
     public static Expression beanExpression(final Class<?> beanType, final String methodName) {
         return BeanLanguage.bean(beanType, methodName);
     }
 
     public static Expression beanExpression(final Object bean, final String methodName) {
-        return BeanLanguage.bean(bean, methodName);        
+        return BeanLanguage.bean(bean, methodName);
     }
 
     public static Expression beanExpression(final String beanRef, final String methodName) {
@@ -2254,7 +2295,7 @@ public final class ExpressionBuilder {
                         // getComponent will create a new component if none already exists
                         Component component = exchange.getContext().getComponent("properties");
                         PropertiesComponent pc = exchange.getContext().getTypeConverter()
-                                .mandatoryConvertTo(PropertiesComponent.class, component);
+                            .mandatoryConvertTo(PropertiesComponent.class, component);
                         // enclose key with {{ }} to force parsing
                         String[] paths = text2.split(",");
                         return pc.parseUri(pc.getPrefixToken() + text + pc.getSuffixToken(), paths);
@@ -2263,10 +2304,10 @@ public final class ExpressionBuilder {
                         Component component = exchange.getContext().hasComponent("properties");
                         if (component == null) {
                             throw new IllegalArgumentException("PropertiesComponent with name properties must be defined"
-                                    + " in CamelContext to support property placeholders in expressions");
+                                + " in CamelContext to support property placeholders in expressions");
                         }
                         PropertiesComponent pc = exchange.getContext().getTypeConverter()
-                                .mandatoryConvertTo(PropertiesComponent.class, component);
+                            .mandatoryConvertTo(PropertiesComponent.class, component);
                         // enclose key with {{ }} to force parsing
                         return pc.parseUri(pc.getPrefixToken() + text + pc.getSuffixToken());
                     }
@@ -2287,14 +2328,14 @@ public final class ExpressionBuilder {
     }
 
     /**
-     * Returns a random number between 0 and upperbound (exclusive)
+     * Returns a random number between 0 and max (exclusive)
      */
-    public static Expression randomExpression(final int upperbound) {
-        return randomExpression(0, upperbound);
+    public static Expression randomExpression(final int max) {
+        return randomExpression(0, max);
     }
 
     /**
-     * Returns a random number between min and max
+     * Returns a random number between min and max (exclusive)
      */
     public static Expression randomExpression(final int min, final int max) {
         return new ExpressionAdapter() {
@@ -2306,13 +2347,13 @@ public final class ExpressionBuilder {
 
             @Override
             public String toString() {
-                return "random";
+                return "random(" + min + "," + max + ")";
             }
         };
     }
 
     /**
-     * Returns a random number between min and max
+     * Returns a random number between min and max (exclusive)
      */
     public static Expression randomExpression(final String min, final String max) {
         return new ExpressionAdapter() {
@@ -2326,7 +2367,25 @@ public final class ExpressionBuilder {
 
             @Override
             public String toString() {
-                return "random";
+                return "random(" + min + "," + max + ")";
+            }
+        };
+    }
+
+    /**
+     * Returns an iterator to skip (iterate) the given expression
+     */
+    public static Expression skipExpression(final String expression, final int number) {
+        return new ExpressionAdapter() {
+            public Object evaluate(Exchange exchange) {
+                // use simple language
+                Expression exp = exchange.getContext().resolveLanguage("simple").createExpression(expression);
+                return ExpressionBuilder.skipIteratorExpression(exp, number).evaluate(exchange, Object.class);
+            }
+
+            @Override
+            public String toString() {
+                return "skip(" + expression + "," + number + ")";
             }
         };
     }
@@ -2339,7 +2398,7 @@ public final class ExpressionBuilder {
             public Object evaluate(Exchange exchange) {
                 // use simple language
                 Expression exp = exchange.getContext().resolveLanguage("simple").createExpression(expression);
-                return ExpressionBuilder.groupIteratorExpression(exp, null, group, false).evaluate(exchange, Object.class);
+                return ExpressionBuilder.groupIteratorExpression(exp, null, "" + group, false).evaluate(exchange, Object.class);
             }
 
             @Override
@@ -2379,7 +2438,7 @@ public final class ExpressionBuilder {
                         def.setShowHeaders(true);
                         def.setStyle(DefaultExchangeFormatter.OutputStyle.Fixed);
                         try {
-                            Integer maxChars = CamelContextHelper.parseInteger(camelContext, camelContext.getProperty(Exchange.LOG_DEBUG_BODY_MAX_CHARS));
+                            Integer maxChars = CamelContextHelper.parseInteger(camelContext, camelContext.getGlobalOption(Exchange.LOG_DEBUG_BODY_MAX_CHARS));
                             if (maxChars != null) {
                                 def.setMaxChars(maxChars);
                             }
@@ -2407,7 +2466,7 @@ public final class ExpressionBuilder {
         private final String toStringValue;
         private final KeyedEntityRetrievalStrategy keyedEntityRetrievalStrategy;
 
-        KeyedOgnlExpressionAdapter(String ognl, String toStringValue, 
+        KeyedOgnlExpressionAdapter(String ognl, String toStringValue,
                                    KeyedEntityRetrievalStrategy keyedEntityRetrievalStrategy) {
             this.ognl = ognl;
             this.toStringValue = toStringValue;
@@ -2421,19 +2480,29 @@ public final class ExpressionBuilder {
                 return property;
             }
 
+
             // Split ognl except when this is not a Map, Array
             // and we would like to keep the dots within the key name
             List<String> methods = OgnlHelper.splitOgnl(ognl);
 
+            String key = methods.get(0);
+            String keySuffix = "";
+            // if ognl starts with a key inside brackets (eg: [foo.bar])
+            // remove starting and ending brackets from key
+            if (key.startsWith("[") && key.endsWith("]")) {
+                key = StringHelper.removeLeadingAndEndingQuotes(key.substring(1, key.length() - 1));
+                keySuffix = StringHelper.after(methods.get(0), key);
+            }
             // remove any OGNL operators so we got the pure key name
-            String key = OgnlHelper.removeOperators(methods.get(0));
+            key = OgnlHelper.removeOperators(key);
+
 
             property = keyedEntityRetrievalStrategy.getKeyedEntity(exchange, key);
             if (property == null) {
                 return null;
             }
             // the remainder is the rest of the ognl without the key
-            String remainder = ObjectHelper.after(ognl, key);
+            String remainder = ObjectHelper.after(ognl, key + keySuffix);
             return new MethodCallExpression(property, remainder).evaluate(exchange);
         }
 
@@ -2448,6 +2517,6 @@ public final class ExpressionBuilder {
         public interface KeyedEntityRetrievalStrategy {
             Object getKeyedEntity(Exchange exchange, String key);
         }
-    };
+    }
 
 }

@@ -73,6 +73,8 @@ public class JsonDataFormat extends DataFormatDefinition {
     private String disableFeatures;
     @XmlAttribute
     private String permissions;
+    @XmlAttribute
+    private Boolean allowUnmarshallType;
 
     public JsonDataFormat() {
         super("json");
@@ -303,6 +305,19 @@ public class JsonDataFormat extends DataFormatDefinition {
         setPermissions(csb.toString());
     }
 
+    public Boolean getAllowUnmarshallType() {
+        return allowUnmarshallType;
+    }
+
+    /**
+     * If enabled then Jackson is allowed to attempt to use the CamelJacksonUnmarshalType header during the unmarshalling.
+     * <p/>
+     * This should only be enabled when desired to be used.
+     */
+    public void setAllowUnmarshallType(Boolean allowUnmarshallType) {
+        this.allowUnmarshallType = allowUnmarshallType;
+    }
+
     @Override
     public String getDataFormatName() {
         // json data format is special as the name can be from different bundles
@@ -317,6 +332,8 @@ public class JsonDataFormat extends DataFormatDefinition {
             setProperty(routeContext.getCamelContext(), this, "dataFormatName", "json-jackson");
         } else if (library == JsonLibrary.Gson) {
             setProperty(routeContext.getCamelContext(), this, "dataFormatName", "json-gson");
+        } else if (library == JsonLibrary.Fastjson) {
+            setProperty(routeContext.getCamelContext(), this, "dataFormatName", "json-fastjson");
         } else {
             setProperty(routeContext.getCamelContext(), this, "dataFormatName", "json-johnzon");
         }
@@ -384,6 +401,9 @@ public class JsonDataFormat extends DataFormatDefinition {
         }
         if (permissions != null) {
             setProperty(camelContext, dataFormat, "permissions", permissions);
+        }
+        if (allowUnmarshallType != null) {
+            setProperty(camelContext, dataFormat, "allowUnmarshallType", allowUnmarshallType);
         }
         // if we have the unmarshal type, but no permission set, then use it to be allowed
         if (permissions == null && unmarshalType != null) {

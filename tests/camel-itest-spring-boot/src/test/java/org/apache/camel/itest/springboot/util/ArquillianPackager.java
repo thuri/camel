@@ -91,6 +91,8 @@ public final class ArquillianPackager {
     private static final String LIB_FOLDER = "/BOOT-INF/lib";
     private static final String CLASSES_FOLDER = "BOOT-INF/classes";
 
+    private static final Pattern PROP_PATTERN = Pattern.compile("(\\$\\{[^}]*\\})");
+
     private ArquillianPackager() {
     }
 
@@ -117,11 +119,11 @@ public final class ArquillianPackager {
         }
 
         if (config.getUseCustomLog()) {
-            ark = ark.addAsResource("spring-logback.xml", "/spring-logback.xml");
+            ark = ark.addAsResource("spring-logback.xml", CLASSES_FOLDER + "/spring-logback.xml");
         }
 
         for (Map.Entry<String, String> res : config.getResources().entrySet()) {
-            ark = ark.addAsResource(res.getKey(), "/" + res.getValue());
+            ark = ark.addAsResource(res.getKey(), CLASSES_FOLDER + "/" + res.getValue());
         }
 
         String version = System.getProperty("version_org.apache.camel:camel-core");
@@ -309,6 +311,7 @@ public final class ArquillianPackager {
         ignore.add("org.apache.parquet");
         ignore.add("org.apache.velocity");
         ignore.add("org.apache.qpid:qpid-jms-client");
+        ignore.add("org.opensaml");
         ignore.add("org.ow2.asm"); // No problem
         ignore.add("org.codehaus.plexus");
         ignore.add("org.jboss.arquillian.container");
@@ -321,6 +324,7 @@ public final class ArquillianPackager {
         ignore.add("net.sourceforge.htmlunit:htmlunit-core-js"); // v 2.21 does not exist
         ignore.add("org.springframework.data");
         ignore.add("org.springframework.security:spring-security-jwt");
+        ignore.add("org.springframework.security:spring-security-rsa");
         ignore.add("org.springframework.social");
         ignore.add("org.webjars"); // No problem
         ignore.add("stax:stax-api");
@@ -469,8 +473,7 @@ public final class ArquillianPackager {
         pom = pom.replace("<!-- DEPENDENCIES -->", dependencies.toString());
 
         Map<String, String> resolvedProperties = new TreeMap<>();
-        Pattern propPattern = Pattern.compile("(\\$\\{[^}]*\\})");
-        Matcher m = propPattern.matcher(pom);
+        Matcher m = PROP_PATTERN.matcher(pom);
         while (m.find()) {
             String property = m.group();
             String resolved = DependencyResolver.resolveModuleOrParentProperty(new File(new File(config.getModuleBasePath()), "pom.xml"), property);
@@ -484,6 +487,7 @@ public final class ArquillianPackager {
         pom = pom.replace("#{module}", config.getModuleName());
 
         File pomFile = new File(config.getModuleBasePath() + "/target/itest-spring-boot-pom.xml");
+        pomFile.getParentFile().mkdirs();
         try (FileWriter fw = new FileWriter(pomFile)) {
             IOUtils.write(pom, fw);
         }

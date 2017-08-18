@@ -28,7 +28,6 @@ import org.apache.camel.component.file.remote.RemoteFileConfiguration.PathSepara
 import org.apache.camel.spi.ClassResolver;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
-import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.PlatformHelper;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPClientConfig;
@@ -37,7 +36,7 @@ import org.apache.commons.net.ftp.FTPFile;
 /**
  * The ftp component is used for uploading or downloading files from FTP servers.
  */
-@UriEndpoint(scheme = "ftp", extendsScheme = "file", title = "FTP",
+@UriEndpoint(firstVersion = "1.1.0", scheme = "ftp", extendsScheme = "file", title = "FTP",
         syntax = "ftp:host:port/directoryName", alternativeSyntax = "ftp:username:password@host:port/directoryName",
         consumerClass = FtpConsumer.class, label = "file")
 public class FtpEndpoint<T extends FTPFile> extends RemoteFileEndpoint<FTPFile> {

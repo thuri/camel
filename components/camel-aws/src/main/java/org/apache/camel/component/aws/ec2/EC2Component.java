@@ -39,7 +39,7 @@ public class EC2Component extends UriEndpointComponent {
     protected Endpoint createEndpoint(String uri, String remaining, Map<String, Object> parameters) throws Exception {
         EC2Configuration configuration = new EC2Configuration();
         setProperties(configuration, parameters);
-        
+
         if (configuration.getAmazonEc2Client() == null && (configuration.getAccessKey() == null || configuration.getSecretKey() == null)) {
             throw new IllegalArgumentException("amazonEC2Client or accessKey and secretKey must be specified");
         }

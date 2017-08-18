@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  * The seda component provides asynchronous call to another endpoint from any CamelContext in the same JVM.
  */
 @ManagedResource(description = "Managed SedaEndpoint")
-@UriEndpoint(scheme = "seda", title = "SEDA", syntax = "seda:name", consumerClass = SedaConsumer.class, label = "core,endpoint")
+@UriEndpoint(firstVersion = "1.1.0", scheme = "seda", title = "SEDA", syntax = "seda:name", consumerClass = SedaConsumer.class, label = "core,endpoint")
 public class SedaEndpoint extends DefaultEndpoint implements AsyncEndpoint, BrowsableEndpoint, MultipleConsumersSupport {
     private static final Logger LOG = LoggerFactory.getLogger(SedaEndpoint.class);
     private final Set<SedaProducer> producers = new CopyOnWriteArraySet<SedaProducer>();
@@ -431,7 +431,7 @@ public class SedaEndpoint extends DefaultEndpoint implements AsyncEndpoint, Brow
      * Returns the current active consumers on this endpoint
      */
     public Set<SedaConsumer> getConsumers() {
-        return new HashSet<SedaConsumer>(consumers);
+        return consumers;
     }
 
     /**

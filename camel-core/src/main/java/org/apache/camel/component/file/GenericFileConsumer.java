@@ -24,15 +24,15 @@ import java.util.List;
 import java.util.Queue;
 import java.util.regex.Pattern;
 
-import org.apache.camel.AsyncCallback;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.ShutdownRunningTask;
 import org.apache.camel.impl.ScheduledBatchPollingConsumer;
+import org.apache.camel.support.EmptyAsyncCallback;
 import org.apache.camel.util.CastUtils;
-import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.StopWatch;
+import org.apache.camel.util.StringHelper;
 import org.apache.camel.util.TimeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +44,6 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
     protected final Logger log = LoggerFactory.getLogger(getClass());
     protected GenericFileEndpoint<T> endpoint;
     protected GenericFileOperations<T> operations;
-    protected volatile boolean loggedIn;
     protected String fileExpressionResult;
     protected volatile ShutdownRunningTask shutdownRunningTask;
     protected volatile int pendingExchanges;
@@ -59,16 +58,8 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
         this.endpoint = endpoint;
         this.operations = operations;
 
-        if (endpoint.getInclude() != null) {
-            this.includePattern = Pattern.compile(endpoint.getInclude(), Pattern.CASE_INSENSITIVE);
-        } else {
-            this.includePattern = null;
-        }
-        if (endpoint.getExclude() != null) {
-            this.excludePattern = Pattern.compile(endpoint.getExclude(), Pattern.CASE_INSENSITIVE);
-        } else {
-            this.excludePattern = null;
-        }
+        this.includePattern = endpoint.getIncludePattern();
+        this.excludePattern = endpoint.getExcludePattern();
     }
 
     public Processor getCustomProcessor() {
@@ -138,7 +129,7 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
             throw e;
         }
 
-        long delta = stop.stop();
+        long delta = stop.taken();
         if (log.isDebugEnabled()) {
             log.debug("Took {} to poll: {}", TimeUtils.printDuration(delta), name);
         }
@@ -150,7 +141,7 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
 
         // sort files using file comparator if provided
         if (endpoint.getSorter() != null) {
-            Collections.sort(files, endpoint.getSorter());
+            files.sort(endpoint.getSorter());
         }
 
         // sort using build in sorters so we can use expressions
@@ -164,7 +155,7 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
         }
         // sort files using exchange comparator if provided
         if (endpoint.getSortBy() != null) {
-            Collections.sort(exchanges, endpoint.getSortBy());
+            exchanges.sort(endpoint.getSortBy());
         }
         if (endpoint.isShuffle()) {
             Collections.shuffle(exchanges);
@@ -457,14 +448,7 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
                 // process the exchange using the async consumer to support async routing engine
                 // which can be supported by this file consumer as all the done work is
                 // provided in the GenericFileOnCompletion
-                getAsyncProcessor().process(exchange, new AsyncCallback() {
-                    public void done(boolean doneSync) {
-                        // noop
-                        if (log.isTraceEnabled()) {
-                            log.trace("Done processing file: {} {}", target, doneSync ? "synchronously" : "asynchronously");
-                        }
-                    }
-                });
+                getAsyncProcessor().process(exchange, EmptyAsyncCallback.get());
             }
 
         } catch (Exception e) {
@@ -668,7 +652,7 @@ public abstract class GenericFileConsumer<T> extends ScheduledBatchPollingConsum
         if (endpoint.getDoneFileName() != null) {
             // done file must be in same path as the file
             String doneFileName = endpoint.createDoneFileName(file.getAbsoluteFilePath());
-            ObjectHelper.notEmpty(doneFileName, "doneFileName", endpoint);
+            StringHelper.notEmpty(doneFileName, "doneFileName", endpoint);
 
             // is it a done file name?
             if (endpoint.isDoneFile(file.getFileNameOnly())) {

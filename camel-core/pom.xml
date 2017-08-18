@@ -1,19 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Licensed to the Apache Software Foundation (ASF) under one or more
-  contributor license agreements.  See the NOTICE file distributed with
-  this work for additional information regarding copyright ownership.
-  The ASF licenses this file to You under the Apache License, Version 2.0
-  (the "License"); you may not use this file except in compliance with
-  the License.  You may obtain a copy of the License at
 
-  http://www.apache.org/licenses/LICENSE-2.0
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
 
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
+         http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
@@ -23,7 +25,7 @@
   <parent>
     <groupId>org.apache.camel</groupId>
     <artifactId>camel-parent</artifactId>
-    <version>2.18.0-SNAPSHOT</version>
+    <version>2.20.0-SNAPSHOT</version>
     <relativePath>../parent</relativePath>
   </parent>
 
@@ -34,17 +36,6 @@
 
   <properties>
     <camel.osgi.export.pkg>
-      !org.apache.camel.component.direct.springboot,
-      !org.apache.camel.component.directvm.springboot,
-      !org.apache.camel.component.log.springboot,
-      !org.apache.camel.component.properties.springboot,
-      !org.apache.camel.component.scheduler.springboot,
-      !org.apache.camel.component.seda.springboot,
-      !org.apache.camel.component.stub.springboot,
-      !org.apache.camel.component.validator.springboot,
-      !org.apache.camel.component.vm.springboot,
-      !org.apache.camel.component.xslt.springboot,
-      !org.apache.camel.impl.springboot,
       !org.apache.camel.tools.*,
       org.apache.camel.*;-noimport:=true
     </camel.osgi.export.pkg>
@@ -163,8 +154,19 @@
       <artifactId>junit</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.hamcrest</groupId>
+      <artifactId>java-hamcrest</artifactId>
+      <version>${hamcrest-version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <scope>test</scope>
+    </dependency>
 
-    <!-- logging -->         
+    <!-- logging -->
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-api</artifactId>
@@ -192,6 +194,11 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <scope>test</scope>
     </dependency>
 
     <!-- validator -->
@@ -235,7 +242,9 @@
         </plugin>
       </plugins>
     </pluginManagement>
+
     <plugins>
+
       <!-- shade caffeine cache for faster Camel and spi-annotations as needed by everybody -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -310,12 +319,6 @@
           </excludes>
         </configuration>
       </plugin>
-
-      <!--<classesDirectory>${project.build.outputDirectory}</classesDirectory>-->
-      <!--<classesDirectory>${project.build}/generated/camel/components</classesDirectory>-->
-      <!--<classesDirectory>${project.build}/generated/camel/dataformats</classesDirectory>-->
-      <!--<classesDirectory>${project.build}/generated/camel/languages</classesDirectory>-->
-      <!--<classesDirectory>${project.build}/generated/camel/models</classesDirectory>-->
 
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
@@ -415,12 +418,12 @@
               <packages>org.apache.camel.builder:org.apache.camel.builder.*</packages>
             </group>
             <group>
-              <title>The routing model for EIP rule definitions</title>
+              <title>EIP model</title>
               <packages>org.apache.camel.model:org.apache.camel.model.*</packages>
             </group>
             <group>
-              <title>Strategy APIs for implementors extending Camel</title>
-              <packages>org.apache.camel.spi</packages>
+              <title>Camel Components</title>
+              <packages>org.apache.camel.component:org.apache.camel.component.*</packages>
             </group>
             <group>
               <title>Language APIs and plugins for Expressions and Predicates</title>
@@ -431,20 +434,24 @@
               <packages>org.apache.camel.processor:org.apache.camel.processor.*</packages>
             </group>
             <group>
-              <title>Camel Components</title>
-              <packages>org.apache.camel.component.*</packages>
+              <title>Strategy APIs for implementors extending Camel</title>
+              <packages>org.apache.camel.spi</packages>
             </group>
             <group>
               <title>Support APIs for implementors</title>
-              <packages>org.apache.camel.support.*</packages>
+              <packages>org.apache.camel.support:org.apache.camel.support.*</packages>
             </group>
             <group>
-              <title>Main class for running Camel standalone</title>
-              <packages>org.apache.camel.main.*</packages>
+              <title>Management (JMX) API</title>
+              <packages>org.apache.camel.management:org.apache.camel.management.*:org.apache.camel.api.management.mbean</packages>
             </group>
             <group>
               <title>Camel Runtime</title>
               <packages>org.apache.camel.impl:org.apache.camel.impl.*</packages>
+            </group>
+            <group>
+              <title>Camel Main to run Camel standalone</title>
+              <packages>org.apache.camel.main</packages>
             </group>
             <group>
               <title>Type conversion helper classes</title>
@@ -460,8 +467,25 @@
     </plugins>
   </reporting>
 
-
   <profiles>
+    <profile>
+      <id>validate</id>
+      <build>
+        <plugins>
+          <!-- to validate Camel endpoints: mvn camel:validate -Pvalidate -->
+          <plugin>
+            <groupId>org.apache.camel</groupId>
+            <artifactId>camel-maven-plugin</artifactId>
+            <version>${project.version}</version>
+            <configuration>
+              <failOnError>true</failOnError>
+              <includeTest>true</includeTest>
+              <ignoreLenientProperties>false</ignoreLenientProperties>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>release</id>
       <build>
@@ -495,12 +519,12 @@
                   <packages>org.apache.camel.builder:org.apache.camel.builder.*</packages>
                 </group>
                 <group>
-                  <title>The bean and JAXB2 model for EIP rule definitions</title>
+                  <title>EIP model</title>
                   <packages>org.apache.camel.model:org.apache.camel.model.*</packages>
                 </group>
                 <group>
-                  <title>Strategy APIs for implementors extending Camel</title>
-                  <packages>org.apache.camel.spi</packages>
+                  <title>Camel Components</title>
+                  <packages>org.apache.camel.component:org.apache.camel.component.*</packages>
                 </group>
                 <group>
                   <title>Language APIs and plugins for Expressions and Predicates</title>
@@ -511,27 +535,23 @@
                   <packages>org.apache.camel.processor:org.apache.camel.processor.*</packages>
                 </group>
                 <group>
-                  <title>Camel Components</title>
-                  <packages>org.apache.camel.component.*</packages>
-                </group>
-                <group>
-                  <title>Camel Support having base classes to extend</title>
-                  <packages>org.apache.camel.support</packages>
+                  <title>Strategy APIs for implementors extending Camel</title>
+                  <packages>org.apache.camel.spi</packages>
                 </group>
                 <group>
                   <title>Support APIs for implementors</title>
-                  <packages>org.apache.camel.support.*</packages>
+                  <packages>org.apache.camel.support:org.apache.camel.support.*</packages>
                 </group>
                 <group>
-                  <title>Main class for running Camel standalone</title>
-                  <packages>org.apache.camel.main.*</packages>
+                  <title>Management (JMX) API</title>
+                  <packages>org.apache.camel.management:org.apache.camel.management.*:org.apache.camel.api.management.mbean</packages>
                 </group>
                 <group>
                   <title>Camel Runtime</title>
                   <packages>org.apache.camel.impl:org.apache.camel.impl.*</packages>
                 </group>
                 <group>
-                  <title>Camel Starters</title>
+                  <title>Camel Main to run Camel standalone</title>
                   <packages>org.apache.camel.main</packages>
                 </group>
                 <group>
@@ -564,13 +584,7 @@
           <artifactId>apt</artifactId>
           <scope>provided</scope>
         </dependency>
-        <!-- enable Spring Boot configuration APT processor -->
-        <dependency>
-          <groupId>org.springframework.boot</groupId>
-          <artifactId>spring-boot-configuration-processor</artifactId>
-          <version>${spring-boot-version}</version>
-          <scope>provided</scope>
-        </dependency>
+
       </dependencies>
     </profile>
 
@@ -621,6 +635,63 @@
           <scope>test</scope>
         </dependency>
       </dependencies>
+    </profile>
+
+    <profile>
+      <id>jdk9-build</id>
+      <activation>
+        <jdk>9</jdk>
+      </activation>
+      <dependencies>
+
+        <!-- enable the APT processor -->
+        <dependency>
+          <groupId>org.apache.camel</groupId>
+          <artifactId>apt</artifactId>
+          <scope>provided</scope>
+        </dependency>
+        <!-- xmltokenizer using woodstox -->
+        <dependency>
+          <groupId>org.codehaus.woodstox</groupId>
+          <artifactId>woodstox-core-asl</artifactId>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <!-- skip file stress tests as they are intended to run manually -->
+              <excludes>
+              <exclude>org/apache/camel/component/file/stress/**.java</exclude>
+              <exclude>**/DistributedCompletionIntervalTest.java</exclude>
+              <exclude>**/DistributedConcurrentPerCorrelationKeyTest.java</exclude>
+              <exclude>${platform.skip.tests}</exclude>
+              </excludes>
+              <forkedProcessTimeoutInSeconds>3000</forkedProcessTimeoutInSeconds>
+              <!-- needed for testing the properties component -->
+              <environmentVariables>
+              <FOO_SERVICE_HOST>myserver</FOO_SERVICE_HOST>
+              <FOO_SERVICE_PORT>8081</FOO_SERVICE_PORT>
+              </environmentVariables>
+              <argLine>--add-modules java.xml.bind,java.xml.ws --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED</argLine>
+            </configuration>
+            <dependencies>
+              <dependency>
+                <groupId>com.sun.xml.bind</groupId>
+                <artifactId>jaxb-core</artifactId>
+                <version>2.2.11</version>
+              </dependency>
+              <dependency>
+                <groupId>com.sun.xml.bind</groupId>
+                <artifactId>jaxb-impl</artifactId>
+                <version>2.2.11</version>
+              </dependency>
+            </dependencies>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 

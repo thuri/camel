@@ -33,14 +33,6 @@ public class Application extends SpringBootServletInitializer {
         SpringApplication.run(Application.class, args);
     }
 
-    @Bean
-    ServletRegistrationBean servletRegistrationBean() {
-        ServletRegistrationBean servlet = new ServletRegistrationBean(
-            new CamelHttpTransportServlet(), "/camel-rest-jpa/*");
-        servlet.setName("CamelServlet");
-        return servlet;
-    }
-
     @Component
     class RestApi extends RouteBuilder {
 
@@ -74,7 +66,7 @@ public class Application extends SpringBootServletInitializer {
             from("timer:new-order?delay=1s&period={{example.generateOrderPeriod:2s}}")
                 .routeId("generate-order")
                 .bean("orderService", "generateOrder")
-                .to("jpa:io.fabric8.quickstarts.camel.Order")
+                .to("jpa:org.apache.camel.example.spring.boot.rest.jpa.Order")
                 .log("Inserted new order ${body.id}");
 
             // A second route polls the DB for new orders and processes them

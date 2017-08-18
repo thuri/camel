@@ -47,6 +47,7 @@ import org.apache.camel.spi.HeaderFilterStrategyAware;
 import org.apache.camel.util.IOHelper;
 import org.apache.camel.util.MessageHelper;
 import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.util.URISupport;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.restlet.Request;
@@ -55,6 +56,7 @@ import org.restlet.data.CacheDirective;
 import org.restlet.data.ChallengeResponse;
 import org.restlet.data.ChallengeScheme;
 import org.restlet.data.CharacterSet;
+import org.restlet.data.ClientInfo;
 import org.restlet.data.Form;
 import org.restlet.data.Header;
 import org.restlet.data.MediaType;
@@ -111,10 +113,7 @@ public class DefaultRestletBinding implements RestletBinding, HeaderFilterStrate
 
 
         // copy query string to header
-        String query = request.getResourceRef().getQuery();
-        if (query != null) {
-            inMessage.setHeader(Exchange.HTTP_QUERY, query);
-        }
+        populateQueryParameters(request, exchange);
 
         // copy URI to header
         inMessage.setHeader(Exchange.HTTP_URI, request.getResourceRef().getIdentifier(true));
@@ -155,6 +154,24 @@ public class DefaultRestletBinding implements RestletBinding, HeaderFilterStrate
             inMessage.setBody(body);
         }
 
+    }
+
+    protected void populateQueryParameters(Request request, Exchange exchange) throws Exception {
+        String query = request.getResourceRef().getQuery();
+        if (query != null) {
+            exchange.getIn().setHeader(Exchange.HTTP_QUERY, query);
+
+            // parse query and map to Camel message headers
+            Map<String, Object> map = URISupport.parseQuery(query);
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                if (!headerFilterStrategy.applyFilterToExternalHeaders(entry.getKey(), entry.getValue(), exchange)) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+                    LOG.trace("HTTP query parameter {} = {}", key, value);
+                    exchange.getIn().setHeader(key, value);
+                }
+            }
+        }
     }
 
     public void populateRestletRequestFromExchange(Request request, Exchange exchange) {
@@ -278,15 +295,19 @@ public class DefaultRestletBinding implements RestletBinding, HeaderFilterStrate
 
         // accept
         String accept = exchange.getIn().getHeader("Accept", String.class);
+        final ClientInfo clientInfo = request.getClientInfo();
+        final List<Preference<MediaType>> acceptedMediaTypesList = clientInfo.getAcceptedMediaTypes();
         if (accept != null) {
-            MediaType acceptedMediaType = exchange.getContext().getTypeConverter().tryConvertTo(MediaType.class, exchange, accept);
-            if (acceptedMediaType != null) {
-                request.getClientInfo().getAcceptedMediaTypes().add(new Preference<MediaType>(acceptedMediaType));
+            final MediaType[] acceptedMediaTypes = exchange.getContext().getTypeConverter().tryConvertTo(MediaType[].class, exchange, accept);
+            for (final MediaType acceptedMediaType : acceptedMediaTypes) {
+                acceptedMediaTypesList.add(new Preference<MediaType>(acceptedMediaType));
             }
         }
-        MediaType acceptedMediaType = exchange.getIn().getHeader(Exchange.ACCEPT_CONTENT_TYPE, MediaType.class);
-        if (acceptedMediaType != null) {
-            request.getClientInfo().getAcceptedMediaTypes().add(new Preference<MediaType>(acceptedMediaType));
+        final MediaType[] acceptedMediaTypes = exchange.getIn().getHeader(Exchange.ACCEPT_CONTENT_TYPE, MediaType[].class);
+        if (acceptedMediaTypes != null) {
+            for (final MediaType acceptedMediaType : acceptedMediaTypes) {
+                acceptedMediaTypesList.add(new Preference<MediaType>(acceptedMediaType));
+            }
         }
 
     }

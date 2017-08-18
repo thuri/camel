@@ -28,6 +28,7 @@ import org.apache.camel.spi.Metadata;
 import org.apache.camel.spi.UriEndpoint;
 import org.apache.camel.spi.UriParam;
 import org.apache.camel.spi.UriPath;
+import org.apache.camel.util.ObjectHelper;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttClientPersistence;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -40,7 +41,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Component for communicating with MQTT M2M message brokers using Eclipse Paho MQTT Client.
  */
-@UriEndpoint(scheme = "paho", title = "Paho", consumerClass = PahoConsumer.class, label = "messaging,iot", syntax = "paho:topic")
+@UriEndpoint(firstVersion = "2.16.0", scheme = "paho", title = "Paho", consumerClass = PahoConsumer.class, label = "messaging,iot", syntax = "paho:topic")
 public class PahoEndpoint extends DefaultEndpoint {
 
     private static final Logger LOG = LoggerFactory.getLogger(PahoEndpoint.class);
@@ -55,12 +56,19 @@ public class PahoEndpoint extends DefaultEndpoint {
     private String brokerUrl = PahoConstants.DEFAULT_BROKER_URL;
     @UriParam(defaultValue = "2")
     private int qos = PahoConstants.DEFAULT_QOS;
-    @UriParam(defaultValue = "false")
+    @UriParam
     private boolean retained;
     @UriParam(defaultValue = "MEMORY")
     private PahoPersistence persistence = PahoPersistence.MEMORY;
-    @UriParam(description = "Base directory used by file persistence.", defaultValue = "Current directory")
+    @UriParam(description = "Base directory used by file persistence. Will by default use current directory.")
     private String filePersistenceDirectory;
+    @UriParam(defaultValue = "true")
+    private boolean autoReconnect = true; 
+    @UriParam @Metadata(secret = true)
+    private String userName; 
+    @UriParam @Metadata(secret = true)
+    private String password; 
+    
 
     // Collaboration members
     @UriParam
@@ -111,7 +119,6 @@ public class PahoEndpoint extends DefaultEndpoint {
     }
 
     // Resolvers
-
     protected MqttClientPersistence resolvePersistence() {
         if (persistence ==  PahoPersistence.MEMORY) {
             return new MemoryPersistence();
@@ -136,16 +143,24 @@ public class PahoEndpoint extends DefaultEndpoint {
             LOG.warn("Found {} instances of the MqttConnectOptions in the registry. None of these will be used by the endpoint. "
                      + "Please use 'connectOptions' endpoint option to select one.", connectOptions.size());
         }
-        return new MqttConnectOptions();
+        
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setAutomaticReconnect(autoReconnect);
+        
+        if (ObjectHelper.isNotEmpty(userName) && ObjectHelper.isNotEmpty(password)) {
+            options.setUserName(userName);
+            options.setPassword(password.toCharArray());
+        }
+        return options;
     }
 
     public Exchange createExchange(MqttMessage mqttMessage, String topic) {
-        PahoMessage paho = new PahoMessage();
-        paho.setMqttMessage(mqttMessage);
+        Exchange exchange = createExchange();
+
+        PahoMessage paho = new PahoMessage(exchange.getContext(), mqttMessage);
         paho.setBody(mqttMessage.getPayload());
         paho.setHeader(PahoConstants.MQTT_TOPIC, topic);
 
-        Exchange exchange = createExchange();
         exchange.setIn(paho);
         return exchange;
     }
@@ -253,6 +268,42 @@ public class PahoEndpoint extends DefaultEndpoint {
      */
     public void setConnectOptions(MqttConnectOptions connOpts) {
         this.connectOptions = connOpts;
+    }
+
+    public synchronized boolean isAutoReconnect() {
+        return autoReconnect;
+    }
+    
+    /**
+     * Client will automatically attempt to reconnect to the server if the connection is lost 
+     * @param autoReconnect
+     */
+    public synchronized void setAutoReconnect(boolean autoReconnect) {
+        this.autoReconnect = autoReconnect;
+    }
+
+    public String getUserName() {
+        return userName;
+    }
+
+    /**
+     * Username to be used for authentication against the MQTT broker
+     * @param userName
+     */
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    /**
+     * Password to be used for authentication against the MQTT broker
+     * @param password
+     */
+    public void setPassword(String password) {
+        this.password = password;
     }
 
 }

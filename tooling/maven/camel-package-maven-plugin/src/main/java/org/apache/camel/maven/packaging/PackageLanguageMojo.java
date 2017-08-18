@@ -144,10 +144,13 @@ public class PackageLanguageMojo extends AbstractMojo {
             }
         }
 
-        // find camel-core and grab the data format model from there, and enrich this model with information from this artifact
-        // and create json schema model file for this data format
+        // is this from Apache Camel then the data format is out of the box and we should enrich the json schema with more details
+        boolean apacheCamel = "org.apache.camel".equals(project.getGroupId());
+
+        // find camel-core and grab the language model from there, and enrich this model with information from this artifact
+        // and create json schema model file for this language
         try {
-            if (count > 0) {
+            if (apacheCamel && count > 0) {
                 Artifact camelCore = findCamelCoreArtifact(project);
                 if (camelCore != null) {
                     File core = camelCore.getFile();
@@ -191,8 +194,17 @@ public class PackageLanguageMojo extends AbstractMojo {
                                 if (row.containsKey("label")) {
                                     languageModel.setLabel(row.get("label"));
                                 }
+                                if (row.containsKey("deprecated")) {
+                                    languageModel.setDeprecated(row.get("deprecated"));
+                                }
+                                if (row.containsKey("deprecationNote")) {
+                                    languageModel.setDeprecationNote(row.get("deprecationNote"));
+                                }
                                 if (row.containsKey("javaType")) {
                                     languageModel.setModelJavaType(row.get("javaType"));
+                                }
+                                if (row.containsKey("firstVersion")) {
+                                    languageModel.setFirstVersion(row.get("firstVersion"));
                                 }
                             }
                             log.debug("Model " + languageModel);
@@ -366,6 +378,11 @@ public class PackageLanguageMojo extends AbstractMojo {
         if (languageModel.getDescription() != null) {
             buffer.append("\n    \"description\": \"").append(languageModel.getDescription()).append("\",");
         }
+        boolean deprecated = "true".equals(languageModel.getDeprecated());
+        buffer.append("\n    \"deprecated\": ").append(deprecated).append(",");
+        if (languageModel.getFirstVersion() != null) {
+            buffer.append("\n    \"firstVersion\": \"").append(languageModel.getFirstVersion()).append("\",");
+        }
         buffer.append("\n    \"label\": \"").append(languageModel.getLabel()).append("\",");
         buffer.append("\n    \"javaType\": \"").append(languageModel.getJavaType()).append("\",");
         if (languageModel.getModelJavaType() != null) {
@@ -386,7 +403,10 @@ public class PackageLanguageMojo extends AbstractMojo {
         private String title;
         private String modelName;
         private String description;
+        private String firstVersion;
         private String label;
+        private String deprecated;
+        private String deprecationNote;
         private String javaType;
         private String modelJavaType;
         private String groupId;
@@ -433,12 +453,36 @@ public class PackageLanguageMojo extends AbstractMojo {
             this.description = description;
         }
 
+        public String getFirstVersion() {
+            return firstVersion;
+        }
+
+        public void setFirstVersion(String firstVersion) {
+            this.firstVersion = firstVersion;
+        }
+
         public String getLabel() {
             return label;
         }
 
         public void setLabel(String label) {
             this.label = label;
+        }
+
+        public String getDeprecated() {
+            return deprecated;
+        }
+
+        public void setDeprecated(String deprecated) {
+            this.deprecated = deprecated;
+        }
+
+        public String getDeprecationNote() {
+            return deprecationNote;
+        }
+
+        public void setDeprecationNote(String deprecationNote) {
+            this.deprecationNote = deprecationNote;
         }
 
         public String getJavaType() {

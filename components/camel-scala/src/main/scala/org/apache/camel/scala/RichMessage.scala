@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import org.apache.camel.Attachment
 import org.apache.camel.Message
 import javax.activation.DataHandler
 import java.util
+import java.util.function.Supplier
 
 class RichMessage(val message: Message) extends Message {
 
@@ -35,6 +36,8 @@ class RichMessage(val message: Message) extends Message {
   def copyAttachments(other: Message) = message.copyAttachments(other)
 
   def copyFrom(other: Message) = message.copyFrom(other)
+
+  def copyFromWithNewBody(other: Message, newBody: Any) = message.copyFromWithNewBody(other, newBody)
 
   @Deprecated
   def createExchangeId = message.createExchangeId
@@ -59,7 +62,11 @@ class RichMessage(val message: Message) extends Message {
 
   def getHeader(name: String, defaultValue: Any) = message.getHeader(name, defaultValue)
 
+  def getHeader(name: String, defaultValueSupplier: Supplier[Object]) = message.getHeader(name, defaultValueSupplier)
+
   def getHeader[T](name: String, defaultValue: Any, headerType: Class[T]) = message.getHeader(name, defaultValue, headerType)
+
+  def getHeader[T](name: String, defaultValueSupplier: Supplier[Object], headerType: Class[T]) = message.getHeader(name, defaultValueSupplier, headerType)
 
   def getHeader[T](name: String, headerType: Class[T]) = message.getHeader(name, headerType)
 

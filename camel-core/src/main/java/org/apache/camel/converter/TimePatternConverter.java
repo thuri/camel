@@ -30,10 +30,10 @@ import org.slf4j.LoggerFactory;
 @Converter
 public final class TimePatternConverter {   
     private static final Logger LOG = LoggerFactory.getLogger(TimePatternConverter.class);
-    private static final String NUMBERS_ONLY_STRING_PATTERN = "^[-]?(\\d)+$";
-    private static final String HOUR_REGEX_PATTERN = "((\\d)*(\\d))h(our(s)?)?";
-    private static final String MINUTES_REGEX_PATTERN = "((\\d)*(\\d))m(in(ute(s)?)?)?";
-    private static final String SECONDS_REGEX_PATTERN = "((\\d)*(\\d))s(ec(ond)?(s)?)?";
+    private static final Pattern NUMBERS_ONLY_STRING_PATTERN = Pattern.compile("^[-]?(\\d)+$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HOUR_REGEX_PATTERN = Pattern.compile("((\\d)*(\\d))h(our(s)?)?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MINUTES_REGEX_PATTERN = Pattern.compile("((\\d)*(\\d))m(in(ute(s)?)?)?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SECONDS_REGEX_PATTERN = Pattern.compile("((\\d)*(\\d))s(ec(ond)?(s)?)?", Pattern.CASE_INSENSITIVE);
 
     /**
      * Utility classes should not have a public constructor.
@@ -43,6 +43,24 @@ public final class TimePatternConverter {
     
     @Converter
     public static long toMilliSeconds(String source) throws IllegalArgumentException {
+        // quick conversion if its only digits
+        boolean digit = true;
+        for (int i = 0; i < source.length(); i++) {
+            char ch = source.charAt(i);
+            // special for fist as it can be negative number
+            if (i == 0 && ch == '-') {
+                continue;
+            }
+            // quick check if its 0..9
+            if (ch < '0' || ch > '9') {
+                digit = false;
+                break;
+            }
+        }
+        if (digit) {
+            return Long.valueOf(source);
+        }
+
         long milliseconds = 0;
         boolean foundFlag = false;
 
@@ -124,8 +142,7 @@ public final class TimePatternConverter {
         }
     }
 
-    private static Matcher createMatcher(String regexPattern, String source) {
-        Pattern pattern = Pattern.compile(regexPattern, Pattern.CASE_INSENSITIVE);
+    private static Matcher createMatcher(Pattern pattern, String source) {
         return pattern.matcher(source);        
     }    
 }

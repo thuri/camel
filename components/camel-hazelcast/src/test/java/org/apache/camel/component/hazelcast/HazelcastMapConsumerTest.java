@@ -43,7 +43,6 @@ public class HazelcastMapConsumerTest extends HazelcastCamelTestSupport {
     private ArgumentCaptor<MapEntryListener> argument;
 
     @Override
-    @SuppressWarnings("unchecked")
     protected void trainHazelcastInstance(HazelcastInstance hazelcastInstance) {
         when(hazelcastInstance.getMap("foo")).thenReturn(map);
         argument = ArgumentCaptor.forClass(MapEntryListener.class);
@@ -51,7 +50,6 @@ public class HazelcastMapConsumerTest extends HazelcastCamelTestSupport {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     protected void verifyHazelcastInstance(HazelcastInstance hazelcastInstance) {
         verify(hazelcastInstance).getMap("foo");
         verify(map).addEntryListener(any(MapEntryListener.class), eq(true));
@@ -128,7 +126,7 @@ public class HazelcastMapConsumerTest extends HazelcastCamelTestSupport {
         return new RouteBuilder() {
             @Override
             public void configure() throws Exception {
-                from(String.format("hazelcast:%sfoo", HazelcastConstants.MAP_PREFIX)).log("object...").choice().when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.ADDED))
+                from(String.format("hazelcast-%sfoo", HazelcastConstants.MAP_PREFIX)).log("object...").choice().when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.ADDED))
                         .log("...added").to("mock:added").when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.EVICTED)).log("...evicted").to("mock:evicted")
                         .when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.UPDATED)).log("...updated").to("mock:updated")
                         .when(header(HazelcastConstants.LISTENER_ACTION).isEqualTo(HazelcastConstants.REMOVED)).log("...removed").to("mock:removed").otherwise().log("fail!");

@@ -27,7 +27,6 @@ import org.apache.camel.ExchangePattern;
 import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
-import org.apache.camel.impl.DefaultExchange;
 import org.apache.camel.impl.DefaultScheduledPollConsumerScheduler;
 import org.apache.camel.impl.ScheduledPollEndpoint;
 import org.apache.camel.spi.UriEndpoint;
@@ -36,9 +35,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Represents a IronMQ endpoint.
+ * The ironmq provides integration with <a href="https://www.iron.io/">IronMQ</a> an elastic and durable hosted message queue as a service.
  */
-@UriEndpoint(scheme = "ironmq", syntax = "ironmq:queueName", title = "ironmq", consumerClass = IronMQConsumer.class, label = "cloud,messaging")
+@UriEndpoint(firstVersion = "2.17.0", scheme = "ironmq", syntax = "ironmq:queueName", title = "IronMQ", consumerClass = IronMQConsumer.class, label = "cloud,messaging")
 public class IronMQEndpoint extends ScheduledPollEndpoint {
     private static final Logger LOG = LoggerFactory.getLogger(IronMQEndpoint.class);
 

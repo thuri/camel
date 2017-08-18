@@ -26,9 +26,11 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.TreeMap;
 
 import org.apache.camel.CamelExchangeException;
 import org.apache.camel.Exchange;
@@ -65,10 +67,11 @@ public class DefaultAhcBinding implements AhcBinding {
         }
 
         RequestBuilder builder = new RequestBuilder();
+        URI uri;
         try {
             // creating the url to use takes 2-steps
             String url = AhcHelper.createURL(exchange, endpoint);
-            URI uri = AhcHelper.createURI(exchange, url, endpoint);
+            uri = AhcHelper.createURI(exchange, url, endpoint);
             // get the url from the uri
             url = uri.toASCIIString();
 
@@ -82,6 +85,7 @@ public class DefaultAhcBinding implements AhcBinding {
         builder.setMethod(method);
 
         populateHeaders(builder, endpoint, exchange);
+        populateCookieHeaders(builder, endpoint, exchange, uri);
         populateBody(builder, endpoint, exchange);
 
         return builder.build();
@@ -115,6 +119,25 @@ public class DefaultAhcBinding implements AhcBinding {
         
         if (endpoint.isConnectionClose()) {
             builder.addHeader("Connection", "close");
+        }
+    }
+
+    private void populateCookieHeaders(RequestBuilder builder, AhcEndpoint endpoint, Exchange exchange, URI uri) throws CamelExchangeException {
+        if (endpoint.getCookieHandler() != null) {
+            try {
+                Map<String, List<String>> cookieHeaders = endpoint.getCookieHandler().loadCookies(exchange, uri);
+                for (Map.Entry<String, List<String>> entry : cookieHeaders.entrySet()) {
+                    String key = entry.getKey();
+                    for (String value : entry.getValue()) {
+                        if (log.isTraceEnabled()) {
+                            log.trace("Adding header {} = {}", key, value);
+                        }
+                        builder.addHeader(key, value);                        
+                    }
+                }
+            } catch (IOException e) {
+                throw new CamelExchangeException("Error loading cookies", exchange, e);
+            }
         }
     }
 
@@ -210,11 +233,26 @@ public class DefaultAhcBinding implements AhcBinding {
 
     @Override
     public void onHeadersReceived(AhcEndpoint endpoint, Exchange exchange, HttpResponseHeaders headers) throws Exception {
-        List<Entry<String, String>> l = headers.getHeaders().entries();
+        Map<String, List<String>> m = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
         for (Entry<String, String> entry : headers.getHeaders().entries()) {
             String key = entry.getKey();
             String value = entry.getValue();
-            exchange.getOut().getHeaders().put(key, value);
+            if (!m.containsKey(key)) {
+                m.put(key, new LinkedList<String>());
+                exchange.getOut().getHeaders().put(key, value);
+            }
+            m.get(key).add(value);
+        }
+        // handle cookies
+        if (endpoint.getCookieHandler() != null) {
+            try {
+                // creating the url to use takes 2-steps
+                String url = AhcHelper.createURL(exchange, endpoint);
+                URI uri = AhcHelper.createURI(exchange, url, endpoint);
+                endpoint.getCookieHandler().storeCookies(exchange, uri, m);
+            } catch (Exception e) {
+                throw new CamelExchangeException("Error storing cookies", exchange, e);
+            }
         }
     }
 

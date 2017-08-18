@@ -17,7 +17,6 @@
 package org.apache.camel.itest.springboot;
 
 import org.apache.camel.itest.springboot.util.ArquillianPackager;
-import org.apache.camel.itest.springboot.util.DependencyResolver;
 import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.junit.Arquillian;
 import org.jboss.shrinkwrap.api.Archive;
@@ -37,6 +36,7 @@ public class CamelJetty9Test extends AbstractSpringBootTestSupport {
         return new ITestConfigBuilder()
                 .module(inferModuleName(CamelJetty9Test.class))
                 .unitTestExclusionPattern(".*(\\.integration\\..*|IntegrationTest$|JettyHttpContentTypeTest$)")
+                .dependency("org.hibernate:hibernate-validator")
                 // in JettyHttpContentTypeTest the case of the encoding string is different in Jetty 9.3
                 .build();
     }

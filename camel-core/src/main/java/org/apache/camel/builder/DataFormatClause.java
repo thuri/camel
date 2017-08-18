@@ -51,6 +51,8 @@ import org.apache.camel.model.dataformat.SerializationDataFormat;
 import org.apache.camel.model.dataformat.SoapJaxbDataFormat;
 import org.apache.camel.model.dataformat.StringDataFormat;
 import org.apache.camel.model.dataformat.SyslogDataFormat;
+import org.apache.camel.model.dataformat.TarFileDataFormat;
+import org.apache.camel.model.dataformat.ThriftDataFormat;
 import org.apache.camel.model.dataformat.TidyMarkupDataFormat;
 import org.apache.camel.model.dataformat.XMLBeansDataFormat;
 import org.apache.camel.model.dataformat.XMLSecurityDataFormat;
@@ -351,7 +353,7 @@ public class DataFormatClause<T extends ProcessorDefinition<?>> {
      *                                   into a MIME Multipart (with only one body part).
      * @param headersInline              define the MIME Multipart headers as part of the message body
      *                                   or as Camel headers
-     * @param includeHeadeers            if headersInline is set to true all camel headers matching this
+     * @param includeHeaders            if headersInline is set to true all camel headers matching this
      *                                   regex are also stored as MIME headers on the Multipart
      * @param binaryContent              have binary encoding for binary content (true) or use Base-64
      *                                   encoding for binary content (false)
@@ -713,9 +715,20 @@ public class DataFormatClause<T extends ProcessorDefinition<?>> {
         dataFormat.setDefaultInstance(defaultInstance);
         return dataFormat(dataFormat);
     }
+    
+    public T protobuf(Object defaultInstance, String contentTypeFormat) {
+        ProtobufDataFormat dataFormat = new ProtobufDataFormat();
+        dataFormat.setDefaultInstance(defaultInstance);
+        dataFormat.setContentTypeFormat(contentTypeFormat);
+        return dataFormat(dataFormat);
+    }
 
     public T protobuf(String instanceClassName) {
         return dataFormat(new ProtobufDataFormat(instanceClassName));
+    }
+    
+    public T protobuf(String instanceClassName, String contentTypeFormat) {
+        return dataFormat(new ProtobufDataFormat(instanceClassName, contentTypeFormat));
     }
 
     /**
@@ -818,6 +831,34 @@ public class DataFormatClause<T extends ProcessorDefinition<?>> {
     public T syslog() {
         return dataFormat(new SyslogDataFormat());
     }
+    
+    /**
+     * Uses the Thrift data format
+     */
+    public T thrift() {
+        return dataFormat(new ThriftDataFormat());
+    }
+
+    public T thrift(Object defaultInstance) {
+        ThriftDataFormat dataFormat = new ThriftDataFormat();
+        dataFormat.setDefaultInstance(defaultInstance);
+        return dataFormat(dataFormat);
+    }
+    
+    public T thrift(Object defaultInstance, String contentTypeFormat) {
+        ThriftDataFormat dataFormat = new ThriftDataFormat();
+        dataFormat.setDefaultInstance(defaultInstance);
+        dataFormat.setContentTypeFormat(contentTypeFormat);
+        return dataFormat(dataFormat);
+    }
+
+    public T thrift(String instanceClassName) {
+        return dataFormat(new ThriftDataFormat(instanceClassName));
+    }
+    
+    public T thrift(String instanceClassName, String contentTypeFormat) {
+        return dataFormat(new ThriftDataFormat(instanceClassName, contentTypeFormat));
+    }
 
     /**
      * Return WellFormed HTML (an XML Document) either
@@ -904,8 +945,8 @@ public class DataFormatClause<T extends ProcessorDefinition<?>> {
     /**
      * Uses the YAML data format
      *
-     * @param type          the yaml type to use
-     * @param type          the type for json snakeyaml type
+     * @param library the yaml type to use
+     * @param type the type for json snakeyaml type
      */
     public T yaml(YAMLLibrary library, Class<?> type) {
         return dataFormat(new YAMLDataFormat(library, type));
@@ -1068,8 +1109,16 @@ public class DataFormatClause<T extends ProcessorDefinition<?>> {
         XMLSecurityDataFormat xsdf = new XMLSecurityDataFormat(secureTag, namespaces, secureTagContents, recipientKeyAlias, xmlCipherAlgorithm, 
                 keyCipherAlgorithm, keyOrTrustStoreParameters, keyPassword, digestAlgorithm);
         return dataFormat(xsdf);
-    }   
-    
+    }
+
+    /**
+     * Uses the Tar file data format
+     */
+    public T tarFile() {
+        TarFileDataFormat tfdf = new TarFileDataFormat();
+        return dataFormat(tfdf);
+    }
+
     /**
      * Uses the xmlBeans data format
      */

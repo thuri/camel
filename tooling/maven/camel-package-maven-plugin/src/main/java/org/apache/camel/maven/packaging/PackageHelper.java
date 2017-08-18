@@ -27,6 +27,7 @@ import java.io.LineNumberReader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.logging.Log;
@@ -123,6 +124,13 @@ public final class PackageHelper {
         return answer;
     }
 
+    public static Set<File> findJsonFiles(File dir, FileFilter filter) {
+        Set<File> files = new TreeSet<>();
+        findJsonFiles(dir, files, filter);
+
+        return files;
+    }
+
     public static void findJsonFiles(File dir, Set<File> found, FileFilter filter) {
         File[] files = dir.listFiles(filter);
         if (files != null) {
@@ -143,10 +151,33 @@ public final class PackageHelper {
         @Override
         public boolean accept(File pathname) {
             // skip camel-jetty9 as its a duplicate of camel-jetty
-            if ("camel-jetty9".equals(pathname)) {
+            if ("camel-jetty9".equals(pathname.getName())) {
                 return false;
             }
             return pathname.isDirectory() || pathname.getName().endsWith(".json");
+        }
+    }
+
+    public static class CamelOthersModelFilter implements FileFilter {
+
+        @Override
+        public boolean accept(File pathname) {
+            String name = pathname.getName();
+            boolean special = "camel-core-osgi".equals(name)
+                || "camel-core-xml".equals(name)
+                || "camel-box".equals(name)
+                || "camel-http-common".equals(name)
+                || "camel-jetty".equals(name)
+                || "camel-jetty-common".equals(name);
+            boolean special2 = "camel-linkedin".equals(name)
+                || "camel-olingo2".equals(name)
+                || "camel-olingo4".equals(name)
+                || "camel-salesforce".equals(name);
+            if (special || special2) {
+                return false;
+            }
+
+            return pathname.isDirectory() || name.endsWith(".json");
         }
     }
 

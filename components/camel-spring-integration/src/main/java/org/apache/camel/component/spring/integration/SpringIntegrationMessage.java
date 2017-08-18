@@ -18,6 +18,7 @@ package org.apache.camel.component.spring.integration;
 
 import java.util.Map;
 
+import org.apache.camel.CamelContextAware;
 import org.apache.camel.impl.DefaultMessage;
 
 /**
@@ -51,9 +52,13 @@ public class SpringIntegrationMessage extends DefaultMessage {
             return;
         }
 
+        if (that instanceof CamelContextAware) {
+            this.setCamelContext(((CamelContextAware) that).getCamelContext());
+        }
+
         setMessageId(that.getMessageId());
         setBody(that.getBody());
-        getHeaders().putAll(that.getHeaders());
+        super.getHeaders().putAll(that.getHeaders());
         if (that instanceof SpringIntegrationMessage) {
             SpringIntegrationMessage orig = (SpringIntegrationMessage) that;
             setMessage(orig.getMessage());
@@ -89,7 +94,10 @@ public class SpringIntegrationMessage extends DefaultMessage {
 
     @Override
     public SpringIntegrationMessage newInstance() {
-        return new SpringIntegrationMessage();
+        // create new empty message
+        SpringIntegrationMessage answer = new SpringIntegrationMessage();
+        answer.setCamelContext(getCamelContext());
+        return answer;
     }
 
     @Override

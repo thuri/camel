@@ -45,9 +45,12 @@ import org.slf4j.LoggerFactory;
  * <li>in body</li>
  * <li>out body</li>
  * <li>fault body </li>
- * <li>exchange properties</li>
  * <li>exception</li>
  * </ul>
+ * <br/>
+ * The exchange properties are not propagated by default. However you can specify they should be included
+ * by the {@link DefaultExchangeHolder#marshal(Exchange, boolean)} method.
+ * <br/>
  * And the following headers is transferred if their values are of primitive types, String or Number based.
  * <ul>
  * <li>in headers</li>
@@ -56,7 +59,6 @@ import org.slf4j.LoggerFactory;
  * </ul>
  * The body is serialized and stored as serialized bytes. The header and exchange properties only include
  * primitive, String, and Number types (and Exception types for exchange properties). Any other type is skipped.
- * <br/>
  * Any message body object that is not serializable will be skipped and Camel will log this at <tt>WARN</tt> level.
  * And any message header values that is not a primitive value will be skipped and Camel will log this at <tt>DEBUG</tt> level.
  *
@@ -373,7 +375,7 @@ public class DefaultExchangeHolder implements Serializable {
      * We only want to store exchange property values of primitive and String related types, and
      * as well any caught exception that Camel routing engine has caught.
      * <p/>
-     * This default implementation will allow the same values as {@link #getValidHeaderValue(String, Object)}
+     * This default implementation will allow the same values as {@link #getValidHeaderValue(String, Object, boolean)}
      * and in addition any value of type {@link Throwable}.
      *
      * @param propertyName   the property name

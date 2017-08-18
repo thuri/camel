@@ -37,7 +37,7 @@ import org.apache.camel.util.StringHelper;
 @UriParams
 public class DefaultExchangeFormatter implements ExchangeFormatter {
 
-    protected static final String LS = System.getProperty("line.separator");
+    protected static final String LS = System.lineSeparator();
     private static final String SEPARATOR = "###REPLACE_ME###";
 
     public enum OutputStyle { Default, Tab, Fixed }
@@ -456,9 +456,9 @@ public class DefaultExchangeFormatter implements ExchangeFormatter {
     private int getMaxChars(Message message) {
         int maxChars = getMaxChars();
         if (message.getExchange() != null) {
-            String property = message.getExchange().getContext().getProperty(Exchange.LOG_DEBUG_BODY_MAX_CHARS);
-            if (property != null) {
-                maxChars = message.getExchange().getContext().getTypeConverter().convertTo(Integer.class, property);
+            String globalOption = message.getExchange().getContext().getGlobalOption(Exchange.LOG_DEBUG_BODY_MAX_CHARS);
+            if (globalOption != null) {
+                maxChars = message.getExchange().getContext().getTypeConverter().convertTo(Integer.class, globalOption);
             }
         }
         return maxChars;

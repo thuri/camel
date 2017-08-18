@@ -16,12 +16,18 @@
  */
 package org.apache.camel.component.ehcache;
 
-import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import org.apache.camel.RuntimeCamelException;
 import org.apache.camel.Service;
 import org.apache.camel.util.ObjectHelper;
+import org.apache.camel.util.ReferenceCount;
 import org.ehcache.Cache;
 import org.ehcache.CacheManager;
+import org.ehcache.UserManagedCache;
+import org.ehcache.config.CacheConfiguration;
+import org.ehcache.config.builders.UserManagedCacheBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,64 +36,69 @@ public class EhcacheManager implements Service {
 
     private final EhcacheConfiguration configuration;
     private final CacheManager cacheManager;
-    private final boolean managed;
+    private final ConcurrentMap<String, UserManagedCache<?, ?>> userCaches;
+    private final ReferenceCount refCount;
 
-    public EhcacheManager(EhcacheConfiguration configuration) throws IOException {
-        this(configuration.createCacheManager(), !configuration.hasCacheManager(), configuration);
-    }
-
-    public EhcacheManager(CacheManager cacheManager) {
-        this(cacheManager, false, null);
-    }
-
-    public EhcacheManager(CacheManager cacheManager, boolean managed) {
-        this(cacheManager, managed, null);
-    }
-
-    private EhcacheManager(CacheManager cacheManager, boolean managed, EhcacheConfiguration configuration) {
-        this.cacheManager = cacheManager;
-        this.managed = managed;
+    public EhcacheManager(CacheManager cacheManager, boolean managed, EhcacheConfiguration configuration) {
+        this.cacheManager = ObjectHelper.notNull(cacheManager, "cacheManager");
+        this.userCaches = new ConcurrentHashMap<>();
         this.configuration = configuration;
-
-        ObjectHelper.notNull(cacheManager, "cacheManager");
+        this.refCount = ReferenceCount.on(
+            managed ? cacheManager::init : () -> { },
+            managed ? cacheManager::close : () -> { }
+        );
     }
 
     @Override
-    public void start() throws Exception {
-        if (managed) {
-            cacheManager.init();
-        }
+    public synchronized void start() throws Exception {
+        refCount.retain();
     }
 
     @Override
-    public void stop() throws Exception {
-        if (managed) {
-            cacheManager.close();
-        }
+    public synchronized void stop() throws Exception {
+        refCount.release();
+        userCaches.values().forEach(UserManagedCache::close);
     }
 
     public <K, V> Cache<K, V> getCache(String name, Class<K> keyType, Class<V> valueType) throws Exception {
         Cache<K, V> cache = cacheManager.getCache(name, keyType, valueType);
         if (cache == null && configuration != null && configuration.isCreateCacheIfNotExist()) {
-            cache = cacheManager.createCache(name, configuration.getMandatoryConfiguration());
+            CacheConfiguration<K, V> cacheConfiguration = null;
+
+            if (configuration.hasConfiguration(name)) {
+                LOGGER.debug("Using custom cache configuration for cache {}", name);
+                cacheConfiguration = CacheConfiguration.class.cast(configuration.getConfigurations().get(name));
+            } else  if (configuration.hasConfiguration()) {
+                LOGGER.debug("Using global cache configuration for cache {}", name);
+                cacheConfiguration = CacheConfiguration.class.cast(configuration.getConfiguration());
+            }
+
+            if (cacheConfiguration != null) {
+                cache = cacheManager.createCache(name, cacheConfiguration);
+            } else {
+                // If a cache configuration is not provided, create a User Managed
+                // Cache
+                LOGGER.debug("Using a UserManagedCache for cache {} as no configuration has been found", name);
+
+                cache = Cache.class.cast(userCaches.computeIfAbsent(
+                    name,
+                    key -> UserManagedCacheBuilder.newUserManagedCacheBuilder(keyType, valueType).build(true)
+                ));
+            }
+        }
+
+        if (cache == null) {
+            throw new RuntimeCamelException("Unable to retrieve the cache " +  name + " from cache manager " + cacheManager);
         }
 
         return cache;
     }
 
-    public Cache<?, ?> getCache(String name) throws Exception {
-        return getCache(
-            name,
-            configuration.getKeyType(),
-            configuration.getValueType());
+    CacheManager getCacheManager() {
+        return this.cacheManager;
     }
 
-    public Cache<?, ?> getCache() throws Exception  {
-        ObjectHelper.notNull(configuration, "Ehcache configuration");
-
-        return getCache(
-            configuration.getCacheName(),
-            configuration.getKeyType(),
-            configuration.getValueType());
+    ReferenceCount getReferenceCount() {
+        return refCount;
     }
 }

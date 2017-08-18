@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -93,6 +94,20 @@ public class CamelContinuationServlet extends CamelServlet {
             return;
         }
 
+        // if its an OPTIONS request then return which method is allowed
+        if ("OPTIONS".equals(request.getMethod()) && !consumer.isOptionsEnabled()) {
+            String s;
+            if (consumer.getEndpoint().getHttpMethodRestrict() != null) {
+                s = "OPTIONS," + consumer.getEndpoint().getHttpMethodRestrict();
+            } else {
+                // allow them all
+                s = "GET,HEAD,POST,PUT,DELETE,TRACE,OPTIONS,CONNECT,PATCH";
+            }
+            response.addHeader("Allow", s);
+            response.setStatus(HttpServletResponse.SC_OK);
+            return;
+        }
+
         if (consumer.getEndpoint().getHttpMethodRestrict() != null) {
             Iterator<?> it = ObjectHelper.createIterable(consumer.getEndpoint().getHttpMethodRestrict()).iterator();
             boolean match = false;
@@ -141,7 +156,7 @@ public class CamelContinuationServlet extends CamelServlet {
                 // remember this id as expired
                 expiredExchanges.put(id, id);
                 log.warn("Continuation expired of exchangeId: {}", id);
-                response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+                consumer.getBinding().doWriteExceptionResponse(new TimeoutException(), response);
                 return;
             }
 

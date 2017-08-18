@@ -26,7 +26,9 @@ import javax.net.ssl.SSLContext;
 import javax.servlet.DispatcherType;
 
 import org.apache.camel.Endpoint;
+import org.apache.camel.SSLContextParametersAware;
 import org.apache.camel.impl.UriEndpointComponent;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.util.jsse.SSLContextParameters;
 import org.cometd.bayeux.server.BayeuxServer;
 import org.cometd.bayeux.server.SecurityPolicy;
@@ -36,7 +38,6 @@ import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
-import org.eclipse.jetty.server.session.HashSessionManager;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
@@ -50,18 +51,26 @@ import org.slf4j.LoggerFactory;
 /**
  * Component for Jetty Cometd
  */
-public class CometdComponent extends UriEndpointComponent {
+public class CometdComponent extends UriEndpointComponent implements SSLContextParametersAware {
     private static final Logger LOG = LoggerFactory.getLogger(CometdComponent.class);
 
     private final Map<String, ConnectorRef> connectors = new LinkedHashMap<String, ConnectorRef>();
-   
+
+    private List<BayeuxServer.BayeuxServerListener> serverListeners;
+
+    @Metadata(label = "security", secret = true)
     private String sslKeyPassword;
+    @Metadata(label = "security", secret = true)
     private String sslPassword;
+    @Metadata(label = "security", secret = true)
     private String sslKeystore;
+    @Metadata(label = "security")
     private SecurityPolicy securityPolicy;
     private List<BayeuxServer.Extension> extensions;
-    private List<BayeuxServer.BayeuxServerListener> serverListeners;
+    @Metadata(label = "security")
     private SSLContextParameters sslContextParameters;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     class ConnectorRef {
         Connector connector;
@@ -204,7 +213,7 @@ public class CometdComponent extends UriEndpointComponent {
 
         context.addServlet(holder, "/cometd/*");
         context.addServlet("org.eclipse.jetty.servlet.DefaultServlet", "/");
-        context.setSessionHandler(new SessionHandler(new HashSessionManager()));
+        context.setSessionHandler(new SessionHandler());
 
         holder.setInitParameter("timeout", Integer.toString(endpoint.getTimeout()));
         holder.setInitParameter("interval", Integer.toString(endpoint.getInterval()));
@@ -218,9 +227,13 @@ public class CometdComponent extends UriEndpointComponent {
 
     protected ServerConnector getSslSocketConnector(Server server) throws Exception {
         ServerConnector sslSocketConnector = null;
-        if (sslContextParameters != null) {
+        SSLContextParameters sslParams = this.sslContextParameters;
+        if (sslParams == null) {
+            sslParams = retrieveGlobalSslContextParameters();
+        }
+        if (sslParams != null) {
             SslContextFactory sslContextFactory = new CometdComponentSslContextFactory();
-            sslContextFactory.setSslContext(sslContextParameters.createSSLContext(getCamelContext()));
+            sslContextFactory.setSslContext(sslParams.createSSLContext(getCamelContext()));
             sslSocketConnector = new ServerConnector(server, sslContextFactory);
         } else {
             SslContextFactory sslContextFactory = new SslContextFactory();
@@ -315,6 +328,19 @@ public class CometdComponent extends UriEndpointComponent {
         this.sslContextParameters = sslContextParameters;
     }
 
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
+    }
+
     protected Server createServer() throws Exception {
         Server server = new Server();
         ContextHandlerCollection collection = new ContextHandlerCollection();
@@ -352,7 +378,8 @@ public class CometdComponent extends UriEndpointComponent {
      * a pre-configured {@link SSLContext}.
      */
     private static final class CometdComponentSslContextFactory extends SslContextFactory {
-        @Override
+        // to support jetty 9.2.
+        // TODO: remove this class when we have upgraded to jetty 9.3
         public void checkKeyStore() {
         }
     }

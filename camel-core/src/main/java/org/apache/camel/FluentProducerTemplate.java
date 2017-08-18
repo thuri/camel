@@ -137,6 +137,11 @@ public interface FluentProducerTemplate extends Service {
     // -----------------------------------------------------------------------
 
     /**
+     * Remove the body and headers.
+     */
+    FluentProducerTemplate clearAll();
+
+    /**
      * Set the header
      *
      * @param key the key of the header
@@ -184,7 +189,7 @@ public interface FluentProducerTemplate extends Service {
      *      )
      *     .withBody("the body")
      *     .to("direct:start")
-     *     .request()
+     *     .request()}
      * </pre>
      *
      * Note that it is invoked only once.
@@ -216,17 +221,16 @@ public interface FluentProducerTemplate extends Service {
      * FluentProducerTemplate.on(context)
      *     .withProcessor(
      *         exchange -> {
-     *             exchange.getIn().setHeader("Key1", "Val1")
-     *             exchange.getIn().setHeader("Key2", "Val2")
-     *             exchange.getIn().setBody("the body")
+     *             exchange.getIn().setHeader("Key1", "Val1");
+     *             exchange.getIn().setHeader("Key2", "Val2");
+     *             exchange.getIn().setBody("the body");
      *         }
      *      )
      *     .to("direct:start")
-     *     .request()
+     *     .request()}
      * </pre>
      *
-     * @param processor
-     * @return
+     * @param processor 
      */
     FluentProducerTemplate withProcessor(Processor processor);
 

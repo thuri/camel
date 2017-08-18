@@ -41,7 +41,8 @@ import org.apache.camel.util.ObjectHelper;
 /**
  * The rest-api component is used for providing Swagger API of the REST services which has been defined using the rest-dsl in Camel.
  */
-@UriEndpoint(scheme = "rest-api", title = "REST API", syntax = "rest-api:path/contextIdPattern", consumerOnly = true, label = "core,rest", lenientProperties = true)
+@UriEndpoint(firstVersion = "2.16.0", scheme = "rest-api", title = "REST API", syntax = "rest-api:path/contextIdPattern",
+    consumerOnly = true, label = "core,rest", lenientProperties = true)
 public class RestApiEndpoint extends DefaultEndpoint {
 
     public static final String DEFAULT_API_COMPONENT_NAME = "swagger";
@@ -162,7 +163,9 @@ public class RestApiEndpoint extends DefaultEndpoint {
             String host = "";
             int port = 80;
 
-            if (config.getHost() != null) {
+            if (config.getApiHost() != null) {
+                host = config.getApiHost();
+            } else if (config.getHost() != null) {
                 host = config.getHost();
             }
             int num = config.getPort();

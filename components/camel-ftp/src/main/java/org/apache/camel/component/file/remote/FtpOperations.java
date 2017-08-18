@@ -144,7 +144,7 @@ public class FtpOperations implements RemoteFileOperations<FTPFile> {
         if (endpoint instanceof FtpEndpoint) {
             FtpEndpoint<?> ftpEndpoint = (FtpEndpoint<?>) endpoint;
             if (ftpEndpoint.getSoTimeout() > 0) {
-                log.trace("Using SoTimeout=" + ftpEndpoint.getSoTimeout());
+                log.trace("Using SoTimeout={}", ftpEndpoint.getSoTimeout());
                 try {
                     client.setSoTimeout(ftpEndpoint.getSoTimeout());
                 } catch (IOException e) {
@@ -157,10 +157,10 @@ public class FtpOperations implements RemoteFileOperations<FTPFile> {
             boolean login;
             if (username != null) {
                 if (account != null) {
-                    log.trace("Attempting to login user: {} using password: {} and account: {}", new Object[]{username, configuration.getPassword(), account});
+                    log.trace("Attempting to login user: {} using password: ******** and account: {}", new Object[]{username, account});
                     login = client.login(username, configuration.getPassword(), account);
                 } else {
-                    log.trace("Attempting to login user: {} using password: {}", username, configuration.getPassword());
+                    log.trace("Attempting to login user: {} using password: ********", username);
                     login = client.login(username, configuration.getPassword());
                 }
             } else {
@@ -593,10 +593,21 @@ public class FtpOperations implements RemoteFileOperations<FTPFile> {
                 log.debug("Took {} ({} millis) to store file: {} and FTP client returned: {}",
                         new Object[]{TimeUtils.printDuration(watch.taken()), watch.taken(), targetName, answer});
             }
-
+            
             // store client reply information after the operation
             exchange.getIn().setHeader(FtpConstants.FTP_REPLY_CODE, client.getReplyCode());
             exchange.getIn().setHeader(FtpConstants.FTP_REPLY_STRING, client.getReplyString());
+
+            // after storing file, we may set chmod on the file
+            String chmod = ((FtpConfiguration) endpoint.getConfiguration()).getChmod();
+            if (ObjectHelper.isNotEmpty(chmod)) {
+                log.debug("Setting chmod: {} on file: {}", chmod, targetName);
+                String command = "chmod " + chmod + " " + targetName;
+                log.trace("Client sendSiteCommand: {}", command);
+                boolean success = client.sendSiteCommand(command);
+                log.trace("Client sendSiteCommand successful: {}", success);
+            }
+            
 
             return answer;
 

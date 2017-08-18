@@ -144,10 +144,13 @@ public class PackageDataFormatMojo extends AbstractMojo {
             }
         }
 
+        // is this from Apache Camel then the data format is out of the box and we should enrich the json schema with more details
+        boolean apacheCamel = "org.apache.camel".equals(project.getGroupId());
+
         // find camel-core and grab the data format model from there, and enrich this model with information from this artifact
         // and create json schema model file for this data format
         try {
-            if (count > 0) {
+            if (apacheCamel && count > 0) {
                 Artifact camelCore = findCamelCoreArtifact(project);
                 if (camelCore != null) {
                     File core = camelCore.getFile();
@@ -165,36 +168,8 @@ public class PackageDataFormatMojo extends AbstractMojo {
                                 is = new FileInputStream(new File(core, "org/apache/camel/model/dataformat/" + modelName + ".json"));
                             }
                             String json = loadText(is);
-                            DataFormatModel dataFormatModel = new DataFormatModel();
-                            dataFormatModel.setName(name);
-                            dataFormatModel.setTitle("");
-                            dataFormatModel.setModelName(modelName);
-                            dataFormatModel.setLabel("");
-                            dataFormatModel.setDescription(project.getDescription());
-                            dataFormatModel.setJavaType(javaType);
-                            dataFormatModel.setGroupId(project.getGroupId());
-                            dataFormatModel.setArtifactId(project.getArtifactId());
-                            dataFormatModel.setVersion(project.getVersion());
 
-                            List<Map<String, String>> rows = JSonSchemaHelper.parseJsonSchema("model", json, false);
-                            for (Map<String, String> row : rows) {
-                                if (row.containsKey("title")) {
-                                    String title = row.get("title");
-                                    dataFormatModel.setTitle(asModelTitle(name, title));
-                                }
-                                if (row.containsKey("label")) {
-                                    dataFormatModel.setLabel(row.get("label"));
-                                }
-                                if (row.containsKey("javaType")) {
-                                    dataFormatModel.setModelJavaType(row.get("javaType"));
-                                }
-                                // override description for camel-core, as otherwise its too generic
-                                if ("camel-core".equals(project.getArtifactId())) {
-                                    if (row.containsKey("description")) {
-                                        dataFormatModel.setDescription(row.get("description"));
-                                    }
-                                }
-                            }
+                            DataFormatModel dataFormatModel = extractDataFormatModel(project, json, modelName, name, javaType);
                             log.debug("Model " + dataFormatModel);
 
                             // build json schema for the data format
@@ -275,6 +250,56 @@ public class PackageDataFormatMojo extends AbstractMojo {
         }
     }
 
+    private static DataFormatModel extractDataFormatModel(MavenProject project, String json, String modelName, String name, String javaType) throws Exception {
+        DataFormatModel dataFormatModel = new DataFormatModel();
+        dataFormatModel.setName(name);
+        dataFormatModel.setTitle("");
+        dataFormatModel.setModelName(modelName);
+        dataFormatModel.setLabel("");
+        dataFormatModel.setDescription(project.getDescription());
+        dataFormatModel.setJavaType(javaType);
+        dataFormatModel.setGroupId(project.getGroupId());
+        dataFormatModel.setArtifactId(project.getArtifactId());
+        dataFormatModel.setVersion(project.getVersion());
+
+        List<Map<String, String>> rows = JSonSchemaHelper.parseJsonSchema("model", json, false);
+        for (Map<String, String> row : rows) {
+            if (row.containsKey("title")) {
+                String title = row.get("title");
+                dataFormatModel.setTitle(asModelTitle(name, title));
+            }
+            if (row.containsKey("label")) {
+                dataFormatModel.setLabel(row.get("label"));
+            }
+            if (row.containsKey("deprecated")) {
+                dataFormatModel.setDeprecated(row.get("deprecated"));
+            }
+            if (row.containsKey("deprecationNote")) {
+                dataFormatModel.setDeprecationNote(row.get("deprecationNote"));
+            }
+            if (row.containsKey("javaType")) {
+                dataFormatModel.setModelJavaType(row.get("javaType"));
+            }
+            if (row.containsKey("firstVersion")) {
+                dataFormatModel.setFirstVersion(row.get("firstVersion"));
+            }
+            // override description for camel-core, as otherwise its too generic
+            if ("camel-core".equals(project.getArtifactId())) {
+                if (row.containsKey("description")) {
+                    dataFormatModel.setDescription(row.get("description"));
+                }
+            }
+        }
+
+        // first version special for json
+        String firstVersion = prepareJsonFirstVersion(name);
+        if (firstVersion != null) {
+            dataFormatModel.setFirstVersion(firstVersion);
+        }
+
+        return dataFormatModel;
+    }
+
     private static String prepareBindyProperties(String name, String properties) {
         String bindy = "\"enum\": [ \"Csv\", \"Fixed\", \"KeyValue\" ], \"deprecated\": \"false\", \"secret\": \"false\"";
         String bindyCsv = "\"enum\": [ \"Csv\", \"Fixed\", \"KeyValue\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Csv\"";
@@ -293,11 +318,12 @@ public class PackageDataFormatMojo extends AbstractMojo {
     }
 
     private static String prepareJsonProperties(String name, String properties) {
-        String json = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"XStream\"";
-        String jsonGson = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Gson\"";
-        String jsonJackson = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Jackson\"";
-        String jsonJohnzon = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Johnzon\"";
-        String jsonXStream = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"XStream\"";
+        String json = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\", \"Fastjson\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"XStream\"";
+        String jsonGson = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\", \"Fastjson\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Gson\"";
+        String jsonJackson = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\", \"Fastjson\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Jackson\"";
+        String jsonJohnzon = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\", \"Fastjson\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Johnzon\"";
+        String jsonXStream = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\", \"Fastjson\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"XStream\"";
+        String jsonFastjson = "\"enum\": [ \"Gson\", \"Jackson\", \"Johnzon\", \"XStream\", \"Fastjson\" ], \"deprecated\": \"false\", \"secret\": \"false\", \"defaultValue\": \"Fastjson\"";
 
         if ("json-gson".equals(name)) {
             properties = properties.replace(json, jsonGson);
@@ -307,9 +333,27 @@ public class PackageDataFormatMojo extends AbstractMojo {
             properties = properties.replace(json, jsonJohnzon);
         } else if ("json-xstream".equals(name)) {
             properties = properties.replace(json, jsonXStream);
+        } else if ("json-fastjson".equals(name)) {
+            properties = properties.replace(json, jsonFastjson);
         }
 
         return properties;
+    }
+
+    private static String prepareJsonFirstVersion(String name) {
+        if ("json-gson".equals(name)) {
+            return "2.10.0";
+        } else if ("json-jackson".equals(name)) {
+            return "2.0.0";
+        } else if ("json-johnzon".equals(name)) {
+            return "2.18.0";
+        } else if ("json-xstream".equals(name)) {
+            return "2.0.0";
+        } else if ("json-fastjson".equals(name)) {
+            return "2.20.0";
+        }
+
+        return null;
     }
 
     private static String readClassFromCamelResource(File file, StringBuilder buffer, BuildContext buildContext) throws MojoExecutionException {
@@ -345,7 +389,7 @@ public class PackageDataFormatMojo extends AbstractMojo {
 
     private static String asModelName(String name) {
         // special for some data formats
-        if ("json-gson".equals(name) || "json-jackson".equals(name) || "json-johnzon".equals(name) || "json-xstream".equals(name)) {
+        if ("json-gson".equals(name) || "json-jackson".equals(name) || "json-johnzon".equals(name) || "json-xstream".equals(name) || "json-fastjson".equals(name)) {
             return "json";
         } else if ("bindy-csv".equals(name) || "bindy-fixed".equals(name) || "bindy-kvp".equals(name)) {
             return "bindy";
@@ -368,6 +412,8 @@ public class PackageDataFormatMojo extends AbstractMojo {
             return "JSon Johnzon";
         } else if ("json-xstream".equals(name)) {
             return "JSon XStream";
+        } else if ("json-fastjson".equals(name)) {
+            return "JSon Fastjson";
         } else if ("bindy-csv".equals(name)) {
             return "Bindy CSV";
         } else if ("bindy-fixed".equals(name)) {
@@ -417,6 +463,11 @@ public class PackageDataFormatMojo extends AbstractMojo {
         if (dataFormatModel.getDescription() != null) {
             buffer.append("\n    \"description\": \"").append(dataFormatModel.getDescription()).append("\",");
         }
+        boolean deprecated = "true".equals(dataFormatModel.getDeprecated());
+        buffer.append("\n    \"deprecated\": ").append(deprecated).append(",");
+        if (dataFormatModel.getFirstVersion() != null) {
+            buffer.append("\n    \"firstVersion\": \"").append(dataFormatModel.getFirstVersion()).append("\",");
+        }
         buffer.append("\n    \"label\": \"").append(dataFormatModel.getLabel()).append("\",");
         buffer.append("\n    \"javaType\": \"").append(dataFormatModel.getJavaType()).append("\",");
         if (dataFormatModel.getModelJavaType() != null) {
@@ -437,7 +488,10 @@ public class PackageDataFormatMojo extends AbstractMojo {
         private String title;
         private String modelName;
         private String description;
+        private String firstVersion;
         private String label;
+        private String deprecated;
+        private String deprecationNote;
         private String javaType;
         private String modelJavaType;
         private String groupId;
@@ -484,12 +538,36 @@ public class PackageDataFormatMojo extends AbstractMojo {
             this.description = description;
         }
 
+        public String getFirstVersion() {
+            return firstVersion;
+        }
+
+        public void setFirstVersion(String firstVersion) {
+            this.firstVersion = firstVersion;
+        }
+
         public String getLabel() {
             return label;
         }
 
         public void setLabel(String label) {
             this.label = label;
+        }
+
+        public String getDeprecated() {
+            return deprecated;
+        }
+
+        public void setDeprecated(String deprecated) {
+            this.deprecated = deprecated;
+        }
+
+        public String getDeprecationNote() {
+            return deprecationNote;
+        }
+
+        public void setDeprecationNote(String deprecationNote) {
+            this.deprecationNote = deprecationNote;
         }
 
         public String getJavaType() {
@@ -532,6 +610,7 @@ public class PackageDataFormatMojo extends AbstractMojo {
                     + ", modelName='" + modelName + '\''
                     + ", description='" + description + '\''
                     + ", label='" + label + '\''
+                    + ", deprecated='" + deprecated + '\''
                     + ", javaType='" + javaType + '\''
                     + ", modelJavaType='" + modelJavaType + '\''
                     + ", groupId='" + groupId + '\''

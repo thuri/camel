@@ -49,14 +49,14 @@ public class TarIterator implements Iterator<Message>, Closeable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TarIterator.class);
 
-    private final Message inputMessage;
+    private final Exchange exchange;
     private volatile TarArchiveInputStream tarInputStream;
     private volatile Message parent;
+    private boolean allowEmptyDirectory;
 
-    public TarIterator(Message inputMessage, InputStream inputStream) {
-        this.inputMessage = inputMessage;
-        //InputStream inputStream = inputMessage.getBody(InputStream.class);
-
+    public TarIterator(Exchange exchange, InputStream inputStream) {
+        this.exchange = exchange;
+        this.allowEmptyDirectory = false;
         if (inputStream instanceof TarArchiveInputStream) {
             tarInputStream = (TarArchiveInputStream) inputStream;
         } else {
@@ -99,7 +99,6 @@ public class TarIterator implements Iterator<Message>, Closeable {
         if (parent == null) {
             parent = getNextElement();
         }
-
         Message answer = parent;
         parent = null;
         checkNullAnswer(answer);
@@ -117,8 +116,8 @@ public class TarIterator implements Iterator<Message>, Closeable {
 
             if (current != null) {
                 LOGGER.debug("Reading tarEntry {}", current.getName());
-                Message answer = new DefaultMessage();
-                answer.getHeaders().putAll(inputMessage.getHeaders());
+                Message answer = new DefaultMessage(exchange.getContext());
+                answer.getHeaders().putAll(exchange.getIn().getHeaders());
                 answer.setHeader(TARFILE_ENTRY_NAME_HEADER, current.getName());
                 answer.setHeader(Exchange.FILE_NAME, current.getName());
                 if (current.getSize() > 0) {
@@ -151,6 +150,10 @@ public class TarIterator implements Iterator<Message>, Closeable {
         while ((entry = tarInputStream.getNextTarEntry()) != null) {
             if (!entry.isDirectory()) {
                 return entry;
+            } else {
+                if (allowEmptyDirectory) {
+                    return entry;
+                }
             }
         }
 
@@ -166,5 +169,13 @@ public class TarIterator implements Iterator<Message>, Closeable {
     public void close() throws IOException {
         IOHelper.close(tarInputStream);
         tarInputStream = null;
+    }
+
+    public boolean isAllowEmptyDirectory() {
+        return allowEmptyDirectory;
+    }
+
+    public void setAllowEmptyDirectory(boolean allowEmptyDirectory) {
+        this.allowEmptyDirectory = allowEmptyDirectory;
     }
 }

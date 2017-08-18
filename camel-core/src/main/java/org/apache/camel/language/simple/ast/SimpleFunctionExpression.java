@@ -20,6 +20,7 @@ import org.apache.camel.Expression;
 import org.apache.camel.builder.ExpressionBuilder;
 import org.apache.camel.language.simple.types.SimpleParserException;
 import org.apache.camel.language.simple.types.SimpleToken;
+import org.apache.camel.util.LRUCache;
 import org.apache.camel.util.ObjectHelper;
 import org.apache.camel.util.OgnlHelper;
 import org.apache.camel.util.StringHelper;
@@ -30,8 +31,17 @@ import org.apache.camel.util.StringHelper;
  */
 public class SimpleFunctionExpression extends LiteralExpression {
 
+    // use caches to avoid re-parsing the same expressions over and over again
+    private LRUCache<String, Expression> cacheExpression;
+
+    @Deprecated
     public SimpleFunctionExpression(SimpleToken token) {
         super(token);
+    }
+
+    public SimpleFunctionExpression(SimpleToken token, LRUCache<String, Expression> cacheExpression) {
+        super(token);
+        this.cacheExpression = cacheExpression;
     }
 
     /**
@@ -42,7 +52,15 @@ public class SimpleFunctionExpression extends LiteralExpression {
     @Override
     public Expression createExpression(String expression) {
         String function = text.toString();
-        return createSimpleExpression(function, true);
+
+        Expression answer = cacheExpression != null ? cacheExpression.get(function) : null;
+        if (answer == null) {
+            answer = createSimpleExpression(function, true);
+            if (cacheExpression != null && answer != null) {
+                cacheExpression.put(function, answer);
+            }
+        }
+        return answer;
     }
 
     /**
@@ -57,7 +75,15 @@ public class SimpleFunctionExpression extends LiteralExpression {
      */
     public Expression createExpression(String expression, boolean strict) {
         String function = text.toString();
-        return createSimpleExpression(function, strict);
+
+        Expression answer = cacheExpression != null ? cacheExpression.get(function) : null;
+        if (answer == null) {
+            answer = createSimpleExpression(function, strict);
+            if (cacheExpression != null && answer != null) {
+                cacheExpression.put(function, answer);
+            }
+        }
+        return answer;
     }
 
     private Expression createSimpleExpression(String function, boolean strict) {
@@ -235,9 +261,9 @@ public class SimpleFunctionExpression extends LiteralExpression {
 
     private Expression createSimpleExpressionBodyOrHeader(String function, boolean strict) {
         // bodyAs
-        String remainder = ifStartsWithReturnRemainder("bodyAs", function);
+        String remainder = ifStartsWithReturnRemainder("bodyAs(", function);
         if (remainder != null) {
-            String type = ObjectHelper.between(remainder, "(", ")");
+            String type = ObjectHelper.before(remainder, ")");
             if (type == null) {
                 throw new SimpleParserException("Valid syntax: ${bodyAs(type)} was: " + function, token.getIndex());
             }
@@ -255,9 +281,9 @@ public class SimpleFunctionExpression extends LiteralExpression {
 
         }
         // mandatoryBodyAs
-        remainder = ifStartsWithReturnRemainder("mandatoryBodyAs", function);
+        remainder = ifStartsWithReturnRemainder("mandatoryBodyAs(", function);
         if (remainder != null) {
-            String type = ObjectHelper.between(remainder, "(", ")");
+            String type = ObjectHelper.before(remainder, ")");
             if (type == null) {
                 throw new SimpleParserException("Valid syntax: ${mandatoryBodyAs(type)} was: " + function, token.getIndex());
             }
@@ -288,9 +314,9 @@ public class SimpleFunctionExpression extends LiteralExpression {
         }
 
         // headerAs
-        remainder = ifStartsWithReturnRemainder("headerAs", function);
+        remainder = ifStartsWithReturnRemainder("headerAs(", function);
         if (remainder != null) {
-            String keyAndType = ObjectHelper.between(remainder, "(", ")");
+            String keyAndType = ObjectHelper.before(remainder, ")");
             if (keyAndType == null) {
                 throw new SimpleParserException("Valid syntax: ${headerAs(key, type)} was: " + function, token.getIndex());
             }
@@ -431,9 +457,9 @@ public class SimpleFunctionExpression extends LiteralExpression {
         String remainder;
 
         // random function
-        remainder = ifStartsWithReturnRemainder("random", function);
+        remainder = ifStartsWithReturnRemainder("random(", function);
         if (remainder != null) {
-            String values = ObjectHelper.between(remainder, "(", ")");
+            String values = ObjectHelper.before(remainder, ")");
             if (values == null || ObjectHelper.isEmpty(values)) {
                 throw new SimpleParserException("Valid syntax: ${random(min,max)} or ${random(max)} was: " + function, token.getIndex());
             }
@@ -448,10 +474,22 @@ public class SimpleFunctionExpression extends LiteralExpression {
             }
         }
 
-        // collate function
-        remainder = ifStartsWithReturnRemainder("collate", function);
+        // skip function
+        remainder = ifStartsWithReturnRemainder("skip(", function);
         if (remainder != null) {
-            String values = ObjectHelper.between(remainder, "(", ")");
+            String values = ObjectHelper.before(remainder, ")");
+            if (values == null || ObjectHelper.isEmpty(values)) {
+                throw new SimpleParserException("Valid syntax: ${skip(number)} was: " + function, token.getIndex());
+            }
+            String exp = "${body}";
+            int num = Integer.parseInt(values.trim());
+            return ExpressionBuilder.skipExpression(exp, num);
+        }
+
+        // collate function
+        remainder = ifStartsWithReturnRemainder("collate(", function);
+        if (remainder != null) {
+            String values = ObjectHelper.before(remainder, ")");
             if (values == null || ObjectHelper.isEmpty(values)) {
                 throw new SimpleParserException("Valid syntax: ${collate(group)} was: " + function, token.getIndex());
             }

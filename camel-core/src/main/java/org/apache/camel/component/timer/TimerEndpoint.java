@@ -39,7 +39,7 @@ import org.apache.camel.spi.UriPath;
  * This component is similar to the scheduler component, but has much less functionality.
  */
 @ManagedResource(description = "Managed TimerEndpoint")
-@UriEndpoint(scheme = "timer", title = "Timer", syntax = "timer:timerName", consumerOnly = true, consumerClass = TimerConsumer.class, label = "core,scheduling")
+@UriEndpoint(firstVersion = "1.0.0", scheme = "timer", title = "Timer", syntax = "timer:timerName", consumerOnly = true, consumerClass = TimerConsumer.class, label = "core,scheduling")
 public class TimerEndpoint extends DefaultEndpoint implements MultipleConsumersSupport {
     @UriPath @Metadata(required = "true")
     private String timerName;
@@ -97,7 +97,10 @@ public class TimerEndpoint extends DefaultEndpoint implements MultipleConsumersS
     @Override
     protected void doStart() throws Exception {
         super.doStart();
-        // do nothing, the timer will be set when the first consumer will request it
+        if (timerName == null) {
+            timerName = getEndpointUri();
+        }
+        // do nothing in regards to setTimer, the timer will be set when the first consumer will request it
     }
 
     @Override
@@ -113,9 +116,6 @@ public class TimerEndpoint extends DefaultEndpoint implements MultipleConsumersS
 
     @ManagedAttribute(description = "Timer Name")
     public String getTimerName() {
-        if (timerName == null) {
-            timerName = getEndpointUri();
-        }
         return timerName;
     }
 

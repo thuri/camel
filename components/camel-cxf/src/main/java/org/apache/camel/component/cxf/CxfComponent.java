@@ -20,11 +20,12 @@ import java.util.Map;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
+import org.apache.camel.SSLContextParametersAware;
 import org.apache.camel.component.cxf.common.message.CxfConstants;
 import org.apache.camel.impl.HeaderFilterStrategyComponent;
+import org.apache.camel.spi.Metadata;
 import org.apache.camel.util.CamelContextHelper;
 import org.apache.camel.util.IntrospectionSupport;
-import org.apache.camel.util.jsse.SSLContextParameters;
 import org.apache.cxf.message.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +33,14 @@ import org.slf4j.LoggerFactory;
 /**
  * Defines the <a href="http://camel.apache.org/cxf.html">CXF Component</a>
  */
-public class CxfComponent extends HeaderFilterStrategyComponent {
+public class CxfComponent extends HeaderFilterStrategyComponent implements SSLContextParametersAware {
 
     private static final Logger LOG = LoggerFactory.getLogger(CxfComponent.class);
 
+    @Metadata(label = "advanced")
     private Boolean allowStreaming;
+    @Metadata(label = "security", defaultValue = "false")
+    private boolean useGlobalSslContextParameters;
 
     public CxfComponent() {
         super(CxfEndpoint.class);
@@ -56,6 +60,19 @@ public class CxfComponent extends HeaderFilterStrategyComponent {
 
     public Boolean isAllowStreaming() {
         return allowStreaming;
+    }
+
+    @Override
+    public boolean isUseGlobalSslContextParameters() {
+        return this.useGlobalSslContextParameters;
+    }
+
+    /**
+     * Enable usage of global SSL context parameters.
+     */
+    @Override
+    public void setUseGlobalSslContextParameters(boolean useGlobalSslContextParameters) {
+        this.useGlobalSslContextParameters = useGlobalSslContextParameters;
     }
 
     /**
@@ -113,6 +130,11 @@ public class CxfComponent extends HeaderFilterStrategyComponent {
         if (result.getProperties() != null) {
             // set the properties of MTOM
             result.setMtomEnabled(Boolean.valueOf((String) result.getProperties().get(Message.MTOM_ENABLED)));
+        }
+
+        // use global ssl config if set
+        if (result.getSslContextParameters() == null) {
+            result.setSslContextParameters(retrieveGlobalSslContextParameters());
         }
 
         return result;
